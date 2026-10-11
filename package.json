@@ -1,0 +1,34 @@
+{
+  "name": "obsidian-daylane",
+  "version": "0.1.0",
+  "description": "Chinese holiday calendars, Markdown events, rolling to-dos and an independent focus timer.",
+  "private": true,
+  "license": "MIT",
+  "author": "Cynthia2023XY",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run check:comments && npm run typecheck && node esbuild.config.mjs",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "package": "npm run build && node scripts/package.mjs",
+    "preview:build": "node scripts/preview.mjs",
+    "format": "prettier --write src tests preview scripts esbuild.config.mjs vitest.config.ts styles.css",
+    "check:comments": "node scripts/check-comments.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "@vitest/coverage-v8": "4.0.18",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.2",
+    "obsidian": "1.13.1",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18",
+    "yaml": "2.8.1"
+  }
+}

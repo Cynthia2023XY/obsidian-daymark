@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Daylane · 中国节假日与重要事项日历</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      :root {
+        --background-primary: #fff;
+        --background-secondary: #f7f8fa;
+        --background-modifier-border: #dde1e8;
+        --background-modifier-hover: #edf2fa;
+        --interactive-accent: #416fb5;
+        --text-normal: #25334a;
+        --text-muted: #778294;
+        --text-on-accent: #fff;
+        --text-warning: #a96921;
+        --text-error: #b64242;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          14px system-ui,
+          sans-serif;
+        color: var(--text-normal);
+        background: #f3f5f9;
+      }
+      header {
+        margin: 30px auto 20px;
+        max-width: 1380px;
+        padding: 0 20px;
+      }
+      header h1 {
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
+      header p {
+        color: var(--text-muted);
+      }
+      main {
+        max-width: 1380px;
+        margin: auto;
+        padding: 0 20px 40px;
+      }
+      #calendar,
+      #timer {
+        background: white;
+        border-radius: 14px;
+        border: 1px solid #dde1e8;
+        margin-bottom: 20px;
+      }
+      #timer {
+        max-width: 600px;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        border: 1px solid #d8dce4;
+        border-radius: 5px;
+        padding: 5px 9px;
+        background: white;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #eef2f8;
+      }
+      button.mod-cta {
+        background: #416fb5;
+        color: white;
+      }
+      h2 {
+        font-size: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Daylane <small>中国节假日与重要事项日历</small></h1>
+      <p>
+        真实日历组件的浏览器视觉验证页 · 仅使用内存演示数据，不修改任何 Vault。
+      </p>
+    </header>
+    <main>
+      <div id="calendar"></div>
+      <div id="timer"></div>
+    </main>
+    <script src="preview.js"></script>
+  </body>
+</html>
