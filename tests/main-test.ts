@@ -46,15 +46,34 @@ function pluginFixture(): {
   const leaves: any[] = [];
   // 保存当前处理阶段的事实结果，供后续校验与展示
   const expand = vi.fn();
+  // 左侧容器是默认日历的唯一归属
+  const leftRoot = { expand };
+  // 右侧容器用于模拟旧版本位置及独立番茄钟
+  const rightRoot = { expand: vi.fn() };
+  // 文件列表所在的左侧主标签组
+  const leftTabs = {};
+  // 旧实现拆出的左下方标签组
+  const lowerTabs = {};
   // 保存当前处理阶段的事实结果，供后续校验与展示
   let ready: () => void = () => undefined;
   // 保存当前处理阶段的事实结果，供后续校验与展示
-  const newLeaf = (): any => {
+  const newLeaf = (side = "main"): any => {
     // 读取当前运行阶段，驱动计时文字与交互状态
     let state = { compact: false, inbox: false };
     // 取得当前工作区目标页签，承载独立视图
     const leaf = {
       type: "",
+      parent:
+        side === "left" ? leftTabs : side === "left-bottom" ? lowerTabs : {},
+      getRoot: () =>
+        side.startsWith("left")
+          ? leftRoot
+          : side === "right"
+            ? rightRoot
+            : null,
+      detach: vi.fn(() => {
+        leaves.splice(leaves.indexOf(leaf), 1);
+      }),
       view: { getState: () => state },
       setViewState: vi.fn(async (next: any) => {
         leaf.type = next.type;
@@ -110,12 +129,16 @@ function pluginFixture(): {
         storage.rename(file.path, target),
     },
     workspace: {
-      getLeaf: newLeaf,
-      getRightLeaf: newLeaf,
+      getLeaf: () => newLeaf(),
+      getLeftLeaf: vi.fn((split = false) =>
+        newLeaf(split ? "left-bottom" : "left"),
+      ),
+      getRightLeaf: vi.fn(() => newLeaf("right")),
       getLeavesOfType: (type: string) =>
         leaves.filter((leaf) => leaf.type === type),
       revealLeaf: vi.fn(),
-      rightSplit: { expand },
+      leftSplit: leftRoot,
+      rightSplit: rightRoot,
       detachLeavesOfType: vi.fn(),
       onLayoutReady: (callback: () => void) => {
         ready = callback;
@@ -157,11 +180,61 @@ describe("单日插件宿主", () => {
       "open-inbox",
     ]);
     ready();
-    await vi.waitFor(() => expect(leaves[0].type).toBe("daylane-calendar"));
+    await vi.waitFor(() =>
+      expect(leaves[0].type).toBe("daymark-chinese-calendar-calendar"),
+    );
     expect(expand).toHaveBeenCalled();
+    expect(plugin.app.workspace.getLeftLeaf).toHaveBeenCalledWith(false);
+    expect(leaves[0].getRoot()).toBe(plugin.app.workspace.leftSplit);
     await plugin.openCalendar(true, false);
     expect(leaves).toHaveLength(1);
     expect(leaves[0].setViewState).toHaveBeenCalledTimes(1);
+    unload(plugin, mock);
+  });
+  it("旧右侧日历自动迁到左侧，保留大屏且不抢编辑焦点", async () => {
+    // 还原旧版本已存在右侧日历的工作区
+    const { plugin, mock, ready, leaves } = pluginFixture();
+    await plugin.onload();
+    // 旧日历需要在新左侧成功创建后才关闭
+    const previous = plugin.app.workspace.getRightLeaf(true)!;
+    await previous.setViewState({
+      type: "daymark-chinese-calendar-calendar",
+      state: { compact: true },
+    });
+    await plugin.openCalendar(false);
+    ready();
+    await vi.waitFor(() =>
+      expect(
+        leaves.some(
+          (leaf) => leaf.getRoot() === plugin.app.workspace.leftSplit,
+        ),
+      ).toBe(true),
+    );
+    expect(previous.detach).toHaveBeenCalledOnce();
+    expect(leaves).toHaveLength(2);
+    expect(plugin.app.workspace.revealLeaf).toHaveBeenCalledTimes(1);
+    await plugin.openCalendar(true, false);
+    expect(leaves).toHaveLength(2);
+    unload(plugin, mock);
+  });
+  it("左下方日历迁到文件列表标签组，不新建上下分区", async () => {
+    // 模拟上次错误实现创建的左下方日历
+    const { plugin, mock, ready, leaves } = pluginFixture();
+    await plugin.onload();
+    // split=true 表示分区，不能作为最终日历位置
+    const previous = plugin.app.workspace.getLeftLeaf(true)!;
+    await previous.setViewState({
+      type: "daymark-chinese-calendar-calendar",
+      state: { compact: true },
+    });
+    ready();
+    await vi.waitFor(() => expect(previous.detach).toHaveBeenCalledOnce());
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].parent).not.toBe(previous.parent);
+    expect(plugin.app.workspace.getLeftLeaf).toHaveBeenLastCalledWith(false);
+    await plugin.openCalendar(true, false);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0].setViewState).toHaveBeenCalledOnce();
     unload(plugin, mock);
   });
   it("新版工作日与短音默认值，旧已移除字段不会保存回来", async () => {

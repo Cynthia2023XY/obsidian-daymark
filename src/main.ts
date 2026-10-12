@@ -35,9 +35,9 @@ import {
 } from "./ui";
 
 /** 沿用插件身份，升级不改变日历视图类型 */
-const CALENDAR_VIEW = "daylane-calendar";
+const CALENDAR_VIEW = "daymark-chinese-calendar-calendar";
 /** 番茄钟保持独立视图 */
-const TIMER_VIEW = "daylane-timer";
+const TIMER_VIEW = "daymark-chinese-calendar-timer";
 /** 单日重要事项与独立番茄钟的公开宿主 */
 export default class DaymarkPlugin extends Plugin implements UiHost {
   /** 精简设置，不持久化被移除的旧开关 */
@@ -315,22 +315,27 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
   migrate(): void {
     new ImportModal(this.app, this, () => this.checkRollover()).open();
   }
-  /** 默认恢复同一侧栏，不抢当前主编辑区焦点 */
+  /** 默认在左侧主标签组恢复日历，不抢当前主编辑区焦点 */
   async openCalendar(
     sidebar = true,
     focus = true,
     inbox = false,
   ): Promise<void> {
-    // 记录已存在的文件或来源，避免覆盖和重复导入
-    const existing = this.app.workspace
-      .getLeavesOfType(CALENDAR_VIEW)
-      .find((leaf) => Boolean(leaf.view.getState().compact) === sidebar);
-    // 取得当前工作区目标页签，承载独立视图
+    // 复用左侧日历，并在创建成功后清理旧的右侧日历
+    const calendars = this.app.workspace.getLeavesOfType(CALENDAR_VIEW);
+    // 不拆分侧栏，将新日历加入文件列表所在的第一组标签页
+    const candidate = sidebar ? this.app.workspace.getLeftLeaf(false) : null;
+    // 比较直接父标签组，避免复用左下方旧分区中的日历
+    const existing = calendars.find(
+      (leaf) =>
+        Boolean(leaf.view.getState().compact) === sidebar &&
+        (!sidebar || (candidate && leaf.parent === candidate.parent)),
+    );
+    // 已有同组日历时移除临时空页签，继续复用原实例
+    if (existing && candidate) candidate.detach();
+    // 大屏保持独立主编辑区页签
     const leaf =
-      existing ??
-      (sidebar
-        ? this.app.workspace.getRightLeaf(true)
-        : this.app.workspace.getLeaf("tab"));
+      existing ?? (sidebar ? candidate : this.app.workspace.getLeaf("tab"));
     if (!leaf) throw new Error("无法创建日历页签");
     if (!existing || focus || inbox)
       await leaf.setViewState({
@@ -338,8 +343,14 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
         active: focus,
         state: { compact: sidebar, inbox },
       });
+    if (sidebar) {
+      // 左侧已成功挂载后再关闭旧侧栏，保留独立大屏日历
+      for (const calendar of calendars)
+        if (calendar !== leaf && calendar.view.getState().compact)
+          calendar.detach();
+    }
     if (focus) await this.app.workspace.revealLeaf(leaf);
-    else this.app.workspace.rightSplit.expand();
+    else if (sidebar) this.app.workspace.leftSplit.expand();
   }
   /** 独立番茄钟由图标及状态栏进入，不占常用命令 */
   async openTimer(): Promise<void> {

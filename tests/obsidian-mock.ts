@@ -27,7 +27,7 @@ export class Plugin {
   /** 宿主保存的配置内容 */
   data: unknown = null;
   /** 模拟插件位置 */
-  manifest = { dir: ".obsidian/plugins/daylane" };
+  manifest = { dir: ".obsidian/plugins/daymark-chinese-calendar" };
   /** 视图创建工厂 */
   factories = new Map<string, (leaf: unknown) => unknown>();
   /** 注册的可执行命令 */

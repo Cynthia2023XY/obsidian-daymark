@@ -122,21 +122,6 @@ export class CalendarPanel {
           this.host.repository.progress.total,
       );
     }
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const [path, issue] of this.host.repository.issues)
-      element(this.root, "p", "daylane-warning", path + "：" + issue);
-    if (
-      this.host.repository.items().some((item) => item.legacy) ||
-      [...this.host.repository.issues.values()].some((message) =>
-        message.includes("旧"),
-      )
-    ) {
-      // 保存当前处理阶段的事实结果，供后续校验与展示
-      const banner = element(this.root, "div", "daylane-legacy-notice");
-      element(banner, "span", "", "旧事项兼容展示，确认迁移前不会自动流转。");
-      if (this.options.interactive !== false)
-        button(banner, "预览迁移", () => this.host.migrate(), this.host.notify);
-    }
     if (this.inboxPage) {
       button(
         this.root,

@@ -8,6 +8,7 @@
   color: var(--text-normal);
   font-family: var(--font-interface);
 }
+/* 日历按钮高于宿主通用 button 规则，保留原生语义与键盘操作。 */
 .daylane-root button {
   font-family: inherit;
 }
@@ -18,7 +19,7 @@
   margin: 2px 22px 32px;
   gap: 14px;
 }
-.daylane-month-heading {
+.daylane-root button.daylane-month-heading {
   padding: 0;
   display: flex;
   gap: 0.28em;
@@ -41,8 +42,8 @@
   align-items: center;
   gap: clamp(8px, 3.8cqi, 28px);
 }
-.daylane-nav-arrow,
-.daylane-today-button {
+.daylane-root button.daylane-nav-arrow,
+.daylane-root button.daylane-today-button {
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -50,11 +51,11 @@
   padding: 0;
   height: auto;
 }
-.daylane-today-button {
+.daylane-root button.daylane-today-button {
   font-size: clamp(13px, 3.4cqi, 24px);
   font-weight: 600;
 }
-.daylane-nav-arrow {
+.daylane-root button.daylane-nav-arrow {
   width: 22px;
   height: 30px;
   display: grid;
@@ -96,7 +97,7 @@
 .daylane-grid {
   row-gap: 4px;
 }
-.daylane-day {
+.daylane-root button.daylane-day {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -112,23 +113,23 @@
   font-size: clamp(13px, 3.5cqi, 24px);
   font-weight: 500;
 }
-.daylane-day:hover {
+.daylane-root button.daylane-day:hover {
   background: var(--background-modifier-hover);
 }
-.daylane-day.is-outside {
+.daylane-root button.daylane-day.is-outside {
   opacity: 0.25;
 }
-.daylane-day.is-today {
+.daylane-root button.daylane-day.is-today {
   color: var(--daylane-accent);
 }
-.daylane-day.is-holiday {
+.daylane-root button.daylane-day.is-holiday {
   color: var(--daylane-dot);
 }
-.daylane-day.is-workday {
+.daylane-root button.daylane-day.is-workday {
   color: var(--daylane-work);
 }
-.daylane-day.is-selected,
-.daylane-day.is-selected:hover {
+.daylane-root button.daylane-day.is-selected,
+.daylane-root button.daylane-day.is-selected:hover {
   background: var(--daylane-accent);
   color: #fff;
 }
@@ -200,8 +201,9 @@
 .daylane-item:hover {
   background: var(--background-modifier-hover);
 }
-.daylane-checkbox[type="checkbox"] {
+.daylane-root input.daylane-checkbox[type="checkbox"] {
   appearance: none;
+  box-shadow: none;
   border: 3px solid var(--text-muted);
   border-radius: 8px;
   width: clamp(20px, 5.3cqi, 36px);
@@ -212,12 +214,19 @@
   cursor: pointer;
   background: transparent;
 }
-.daylane-checkbox[type="checkbox"]:checked {
+.daylane-root input.daylane-checkbox[type="checkbox"]:checked {
   border-color: var(--daylane-accent);
   background: var(--daylane-accent);
 }
-.daylane-checkbox[type="checkbox"]:checked::after {
+.daylane-root input.daylane-checkbox[type="checkbox"]:checked::after {
   content: "";
+  position: static;
+  margin: 0;
+  top: auto;
+  left: auto;
+  background: none;
+  mask: none;
+  -webkit-mask: none;
   width: 35%;
   height: 58%;
   border-right: 2px solid white;
@@ -228,7 +237,7 @@
   opacity: 0.55;
   cursor: default;
 }
-.daylane-item-title {
+.daylane-root button.daylane-item-title {
   background: none;
   border: 0;
   box-shadow: none;
@@ -242,11 +251,11 @@
   height: auto;
   justify-content: flex-start;
 }
-.daylane-item.is-completed .daylane-item-title {
+.daylane-root .daylane-item.is-completed button.daylane-item-title {
   color: var(--text-muted);
   text-decoration: line-through;
 }
-.daylane-delete {
+.daylane-root button.daylane-delete {
   background: none;
   border: 0;
   box-shadow: none;
@@ -255,9 +264,9 @@
   font-size: 22px;
   height: auto;
 }
-.daylane-add,
-.daylane-inbox-link,
-.daylane-text-button {
+.daylane-root button.daylane-add,
+.daylane-root button.daylane-inbox-link,
+.daylane-root button.daylane-text-button {
   display: block;
   border: 0;
   box-shadow: none;
@@ -267,17 +276,16 @@
   height: auto;
   text-align: left;
 }
-.daylane-add {
+.daylane-root button.daylane-add {
   font-size: clamp(14px, 3.9cqi, 27px);
 }
-.daylane-inbox-link {
+.daylane-root button.daylane-inbox-link {
   font-size: clamp(11px, 2.5cqi, 16px);
   color: var(--text-muted);
   margin-top: 15px;
 }
 .daylane-muted,
-.daylane-warning,
-.daylane-legacy-notice {
+.daylane-warning {
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -287,14 +295,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.daylane-legacy-notice {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.daylane-root:focus-within .daylane-day:focus-visible {
+.daylane-root:focus-within button.daylane-day:focus-visible {
   outline: 2px solid var(--daylane-accent);
   outline-offset: 2px;
 }
@@ -429,7 +430,7 @@
     padding: 0 2px;
     right: 1px;
   }
-  .daylane-checkbox[type="checkbox"] {
+  .daylane-root input.daylane-checkbox[type="checkbox"] {
     border-width: 2px;
     border-radius: 5px;
   }

@@ -10,8 +10,8 @@ export class ObsidianVault implements VaultPort {
     pluginDirectory?: string,
   ) {
     this.backupFolder =
-      (pluginDirectory || app.vault.configDir + "/plugins/daylane") +
-      "/backups";
+      (pluginDirectory ||
+        app.vault.configDir + "/plugins/daymark-chinese-calendar") + "/backups";
   }
   /** 枚举 Markdown */
   paths(): string[] {

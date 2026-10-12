@@ -13,10 +13,12 @@ const manifest = JSON.parse(
 const metadata = JSON.parse(
   await readFile(path.join(root, "package.json"), "utf8"),
 );
+if (!/^[a-z-]+$/.test(manifest.id))
+  throw new Error("插件 ID 应为小写字母与连字符");
 if (manifest.version !== metadata.version)
   throw new Error("manifest 与 package.json 版本不同");
 /** 可直接复制安装的发行目录 */
-const target = path.join(root, "dist", "daylane");
+const target = path.join(root, "dist", manifest.id);
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 /** 逐项处理当前业务集合，保留每项自己的状态与结果 */
@@ -26,9 +28,13 @@ for (const file of ["main.js", "manifest.json", "styles.css", "LICENSE"]) {
   await cp(path.join(root, file), path.join(target, file));
 }
 /** 打包归档只覆盖本脚本生成的发行文件 */
-const archive = path.join(root, "dist", `daylane-${manifest.version}.zip`);
+const archive = path.join(
+  root,
+  "dist",
+  `${manifest.id}-${manifest.version}.zip`,
+);
 await rm(archive, { force: true });
-execFileSync("zip", ["-rq", archive, "daylane"], {
+execFileSync("zip", ["-rq", archive, manifest.id], {
   cwd: path.join(root, "dist"),
 });
 process.stdout.write(`已生成 ${archive}\n`);

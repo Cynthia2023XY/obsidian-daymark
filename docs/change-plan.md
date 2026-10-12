@@ -11,7 +11,7 @@ status: 修改方案草案
 
 产品定位改为：**带中国正式节假日的单日重要事项日历，支持未完成事项顺延与待办箱，附独立番茄钟。**
 
-正式显示名称确定为 Daymark: Chinese Holiday Calendar，中文称“每日要事”，突出单日重要事项。为兼容现有用户笔记与配置，保留仓库名、插件 ID daylane、daylane-* 属性和 daylane 代码块语言；显示名称变更不触发数据迁移。
+正式显示名称确定为 Daymark - Chinese Holiday Calendar，中文称“每日要事”，突出单日重要事项。为兼容现有用户笔记与配置，仓库名采用 obsidian-daymark，插件 ID 按最终发布要求改为 daymark-chinese-calendar；保留 daylane-* 属性和 daylane 代码块语言；显示名称变更不触发数据迁移。
 
 作者显示名称统一改为 **Cynthia Ding**；GitHub 用户名与仓库归属仍可保留 Cynthia2023XY。后续修改 manifest、package 元信息、README 署名和 LICENSE 的本人署名，不改动第三方署名。
 
