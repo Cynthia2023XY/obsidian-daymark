@@ -1,176 +1,242 @@
 import { describe, expect, it } from "vitest";
 import { ItemRepository, noteContent, splitNote } from "../src/repository";
 import { fixture, MemoryVault, todo } from "./helpers";
-
-/** 存储契约覆盖冷启动、异步竞争与原文保留 */
-describe("Markdown 事项仓库", () => {
-  it("冷启动直接读取原文并保存正文和未知属性", async () => {
+/** 原文保留、范围识别、文件名与已知异步竞态 */
+describe("单日文档仓库", () => {
+  it("普通同名文档保持原文，新建使用数字且正文为二级标题", async () => {
+    // 取得当前测试或业务边界，核对完整操作链
+    const { repository, vault } = await fixture();
+    vault.files.set("Daylane/Items/测试b.md", "普通文档");
+    // 记录起始边界或首次请求状态，验证顺序与竞态
+    const first = await repository.create({ ...todo(), title: "测试b" });
+    // 创建第二个独立视图或请求，核对共享状态与资源清理
+    const second = await repository.create({ ...todo(), title: "测试b" });
+    expect(first.path).toBe("Daylane/Items/测试b 1.md");
+    expect(second.path).toBe("Daylane/Items/测试b 2.md");
+    expect(vault.files.get("Daylane/Items/测试b.md")).toBe("普通文档");
+    expect(await vault.read(first.path)).toContain("## 测试b");
+    expect(
+      Object.keys(
+        splitNote(await vault.read(first.path), vault.parseYaml).fields,
+      ),
+    ).toHaveLength(4);
+  });
+  it("无重名直接用标题；文件夹占名及同步抢占同样处理", async () => {
+    // 取得当前测试或业务边界，核对完整操作链
+    const { repository, vault } = await fixture();
+    vault.folders.add("Daylane/Items/文件夹.md");
+    expect((await repository.create({ ...todo(), title: "文件夹" })).path).toBe(
+      "Daylane/Items/文件夹 1.md",
+    );
+    vault.beforeCreate = (path) => {
+      vault.beforeCreate = undefined;
+      vault.files.set(path, "同步占名");
+    };
+    expect((await repository.create({ ...todo(), title: "冲突" })).path).toBe(
+      "Daylane/Items/冲突 1.md",
+    );
+    expect(vault.files.get("Daylane/Items/冲突.md")).toBe("同步占名");
+  });
+  it("I/O 失败不冒充重名无限重试", async () => {
+    // 取得当前测试或业务边界，核对完整操作链
+    const { repository, vault } = await fixture();
+    vault.failWrite = true;
+    await expect(repository.create(todo())).rejects.toThrow("写入失败");
+  });
+  it("手动改期、完成、入箱均保留累计次数和正文", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { repository, vault } = await fixture();
     // 读取当前事项快照，核对操作对象与排期状态
     const item = repository.items()[0];
-    expect(item.title).toBe("整理接口文档");
-    await repository.edit(item, { ...item, title: "新的标题" });
+    await repository.mutate(item, (fields) => {
+      fields["daylane-rollover-count"] = 5;
+      return true;
+    });
+    await repository.schedule(repository.items()[0], "2026-10-15");
+    await repository.status(repository.items()[0], "completed");
+    await repository.schedule(repository.items()[0]);
+    expect(repository.inbox()[0]).toMatchObject({
+      status: "completed",
+      rolloverCount: 5,
+    });
     // 分离原始属性与正文，更新时保留用户原有说明
     const note = splitNote(await vault.read(item.path), vault.parseYaml);
-    expect(note.fields.custom).toBe("保持原值");
-    expect(note.body).toContain("保留所有原始说明");
-    expect(repository.items()[0].path).toBe(item.path);
+    expect(note.body).toContain("完整说明");
+    expect(note.fields.custom).toBe("保留");
   });
-  it("日期流转或标题修改不会重命名文件", async () => {
+  it("文件重命名只更新目标索引且不丢失身份，正文标题不参与识别", async () => {
     // 取得当前测试或业务边界，核对完整操作链
-    const { repository } = await fixture();
-    // 读取当前事项快照，核对操作对象与排期状态
-    const item = repository.items()[0];
-    await repository.edit(item, { ...item, scheduled: "2027-01-01" });
-    expect(repository.items()[0].path).toBe(item.path);
-    expect(repository.items()[0].originalScheduled).toBe("2026-10-09");
+    const { repository, vault } = await fixture();
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const old = repository.items()[0].path;
+    vault.files.set(
+      "Daylane/Items/新标题.md",
+      (await vault.read(old)).replace("## 原文", "## 正文修改"),
+    );
+    vault.files.delete(old);
+    await repository.renamed("Daylane/Items/新标题.md", old);
+    expect(repository.items()).toHaveLength(1);
+    expect(repository.items()[0].title).toBe("新标题");
+    await repository.renamed("Other/新标题.md", "Daylane/Items/新标题.md");
+    expect(repository.items()).toHaveLength(0);
   });
-  it("读取失败保留已有索引，恢复重扫可以重试", async () => {
+  it("目录外标记默认不读取，开启全库仍不把普通文档当成事项", async () => {
+    // 取得当前测试或业务边界，核对完整操作链
+    const { repository, vault } = await fixture();
+    vault.files.set(
+      "Other/事项.md",
+      noteContent({ "daylane-type": "important-event" }, "正文"),
+    );
+    vault.files.set("Other/普通.md", "普通笔记");
+    await repository.scan();
+    expect(repository.items()).toHaveLength(1);
+    await repository.configure("Daylane/Items", false);
+    expect(repository.items()).toHaveLength(2);
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const reads = vault.readCount;
+    await repository.renamed("Other/事项.md", "Other/旧名称.md");
+    expect(vault.readCount - reads).toBe(1);
+  });
+  it("较早读取不能覆盖最新修改，删除目录使旧读取失效", async () => {
+    // 取得当前测试或业务边界，核对完整操作链
+    const { repository, vault } = await fixture();
+    // 使用明确的 Vault 相对路径，定位本次读写对象
+    const path = repository.items()[0].path;
+    // 保留操作前原文，用于验证不会破坏源内容
+    const original = await vault.read(path);
+    // 显式释放延迟读取，验证旧结果不能覆盖新事实
+    let release!: (value: string) => void;
+    // 记录起始边界或首次请求状态，验证顺序与竞态
+    const first = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    // 保存原始读取边界，模拟部分请求延迟
+    const read = vault.read.bind(vault);
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    let delayed = true;
+    vault.read = (target) => {
+      if (delayed) {
+        delayed = false;
+        return first;
+      }
+      return read(target);
+    };
+    // 控制异步读取返回顺序，复现冷启动与删除竞态
+    const pending = repository.refresh(path);
+    vault.files.set(path, original.replace('"open"', '"completed"'));
+    await repository.refresh(path);
+    release(original);
+    await pending;
+    expect(repository.items()[0].status).toBe("completed");
+    vault.read = () =>
+      new Promise((resolve) => {
+        release = resolve;
+      });
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const deleted = repository.refresh(path);
+    repository.remove("Daylane/Items");
+    release(original);
+    await deleted;
+    expect(repository.items()).toHaveLength(0);
+  });
+  it("读取失败保留旧索引，明确结构错误移出索引", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { repository, vault } = await fixture();
     vault.failRead = true;
     await repository.scan();
     expect(repository.items()).toHaveLength(1);
-    expect(repository.issues.size).toBe(1);
     vault.failRead = false;
-    await repository.scan();
-    expect(repository.issues.size).toBe(0);
-  });
-  it("显式损坏 frontmatter 移出可操作索引并报告问题", async () => {
-    // 取得当前测试或业务边界，核对完整操作链
-    const { repository, vault } = await fixture();
-    // 读取当前事项快照，核对操作对象与排期状态
-    const item = repository.items()[0];
-    vault.files.set(item.path, noteContent({ "daylane-schema": 1 }, "坏数据"));
-    await repository.refresh(item.path);
+    // 使用明确的 Vault 相对路径，定位本次读写对象
+    const path = repository.items()[0].path;
+    vault.files.set(
+      path,
+      noteContent(
+        { "daylane-type": "important-event", "daylane-date": "bad" },
+        "原文",
+      ),
+    );
+    await repository.refresh(path);
     expect(repository.items()).toHaveLength(0);
     expect(repository.issues.size).toBe(1);
   });
-  it("较早的读取结果不能覆盖最新修改", async () => {
+  it("保留文档删除只移除四项，不影响通用 YAML 与正文", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { repository, vault } = await fixture();
     // 读取当前事项快照，核对操作对象与排期状态
     const item = repository.items()[0];
-    // 保留操作前原文，用于验证不会破坏源内容
-    const original = await vault.read(item.path);
-    // 显式释放延迟读取，验证旧结果不能覆盖新事实
-    let release!: (content: string) => void;
-    // 控制异步读取返回顺序，复现冷启动与删除竞态
-    const pending = new Promise<string>((resolve) => {
-      release = resolve;
+    await repository.removeItem(item, true);
+    // 分离原始属性与正文，更新时保留用户原有说明
+    const note = splitNote(await vault.read(item.path), vault.parseYaml);
+    expect(note.fields).toEqual({
+      custom: "保留",
+      "date created": "原创建时间",
     });
-    // 保存原始读取边界，模拟部分请求延迟
-    const read = vault.read.bind(vault);
-    // 记录起始边界或首次请求状态，验证顺序与竞态
-    let first = true;
-    vault.read = (path) => {
-      if (first) {
-        first = false;
-        return pending;
-      }
-      return read(path);
-    };
-    // 保留较早读取任务，验证最新请求优先
-    const oldRead = repository.refresh(item.path);
-    vault.files.set(
-      item.path,
-      original.replace("整理接口文档", "同步后的标题"),
-    );
-    await repository.refresh(item.path);
-    release(original);
-    await oldRead;
-    expect(repository.items()[0].title).toBe("同步后的标题");
-  });
-  it("删除目录立即使全部待返回读取失效", async () => {
-    // 取得当前测试或业务边界，核对完整操作链
-    const { repository, vault } = await fixture();
-    // 读取当前事项快照，核对操作对象与排期状态
-    const item = repository.items()[0];
-    // 保留操作前原文，用于验证不会破坏源内容
-    const original = await vault.read(item.path);
-    // 显式释放延迟读取，验证旧结果不能覆盖新事实
-    let release!: (content: string) => void;
-    vault.read = () =>
-      new Promise((resolve) => {
-        release = resolve;
-      });
-    // 控制异步读取返回顺序，复现冷启动与删除竞态
-    const pending = repository.refresh(item.path);
-    repository.remove("Daylane/Items/2026");
-    release(original);
-    await pending;
+    expect(note.body).toContain("完整说明");
     expect(repository.items()).toHaveLength(0);
   });
-  it("文件更名后只保留新路径，身份保持稳定", async () => {
-    // 取得当前测试或业务边界，核对完整操作链
-    const { repository, vault } = await fixture();
-    // 读取当前事项快照，核对操作对象与排期状态
-    const item = repository.items()[0];
-    // 计算后续日期或新路径，不沿用已失效的状态
-    const next = "Daylane/Items/2026/renamed.md";
-    vault.files.set(next, vault.files.get(item.path)!);
-    vault.files.delete(item.path);
-    repository.remove(item.path);
-    await repository.scan();
-    expect(repository.items()).toHaveLength(1);
-    expect(repository.items()[0]).toMatchObject({ id: item.id, path: next });
-  });
-  it("重复 ID 明确报告，任何副本不能被静默改写", async () => {
-    // 取得当前测试或业务边界，核对完整操作链
-    const { repository, vault } = await fixture();
-    // 读取当前事项快照，核对操作对象与排期状态
-    const item = repository.items()[0];
-    vault.files.set("Daylane/Items/2026/copy.md", await vault.read(item.path));
-    await repository.scan();
-    expect(repository.conflicts()).toHaveLength(1);
-    await expect(repository.status(item, "completed")).rejects.toThrow("冲突");
-  });
-  it("回收失败保留文件与索引，旧表单不覆盖最新版本", async () => {
+  it("默认回收失败保持索引，成功后文档和索引一起移除", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { repository, vault } = await fixture();
     // 读取当前事项快照，核对操作对象与排期状态
     const item = repository.items()[0];
     vault.failWrite = true;
-    await expect(repository.trash(item)).rejects.toThrow();
+    await expect(repository.removeItem(item, false)).rejects.toThrow();
     expect(repository.items()).toHaveLength(1);
     vault.failWrite = false;
-    await repository.status(item, "completed");
-    await expect(
-      repository.edit(item, { ...item, title: "旧表单" }),
-    ).rejects.toThrow("已修改");
+    await repository.removeItem(item, false);
+    expect(repository.items()).toHaveLength(0);
+    expect(vault.exists(item.path)).toBe(false);
   });
-  it("目录范围严格，创建新笔记独立于同名普通笔记", async () => {
+  it("全库首次扫描分批完成，删除普通文件不触发全量读取", async () => {
     // 模拟公开文件边界，业务实现无需加入测试分支
     const vault = new MemoryVault();
+    // 逐项处理当前业务集合，保留每项自己的状态与结果
+    for (let index = 0; index < 50; index++)
+      vault.files.set("Any/" + index + ".md", "普通文档");
     // 提供 Markdown 事实仓库，验证索引与写入契约
-    const repository = new ItemRepository(vault, "Daylane/Items");
-    vault.files.set("Elsewhere/test.md", "普通笔记");
+    const repository = new ItemRepository(vault, "Daylane/Items", false);
     await repository.scan();
-    // 记录成功创建数量或对象，不将失败项计为完成
-    const created = await repository.create(todo(), "原始正文");
-    expect(created.path).toMatch(/^Daylane\/Items\/\d{4}\//);
-    expect(created.originalScheduled).toBe("2026-10-09");
-    expect(vault.files.get("Elsewhere/test.md")).toBe("普通笔记");
+    expect(repository.progress).toEqual({
+      active: false,
+      completed: 50,
+      total: 50,
+    });
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const reads = vault.readCount;
+    repository.remove("Any/0.md");
+    expect(vault.readCount).toBe(reads);
     repository.dispose();
-    await repository.refresh(created.path);
   });
-  it("外部编辑未更新时间戳时旧表单仍然不能覆盖标题", async () => {
-    // 取得当前测试或业务边界，核对完整操作链
-    const { repository, vault } = await fixture();
-    // 读取当前事项快照，核对操作对象与排期状态
-    const item = repository.items()[0];
-    vault.beforeUpdate = (path) => {
-      // 分离原始属性与正文，更新时保留用户原有说明
-      const note = splitNote(vault.files.get(path)!, vault.parseYaml);
-      note.fields.title = "外部修改后的标题";
-      vault.files.set(path, noteContent(note.fields, note.body));
+  it("全库扫描最多十六个并发读取，进度不会逐文件重绘", async () => {
+    // 构造超过一批的原文，观察实际文件边界并发
+    const vault = new MemoryVault();
+    // 逐项处理当前业务集合，保留每项自己的状态与结果
+    for (let index = 0; index < 64; index++)
+      vault.files.set("Other/" + index + ".md", "普通文档");
+    // 读取仅延迟到下一微任务，能够测量同批并发
+    const original = vault.read.bind(vault);
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    let active = 0;
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    let maximum = 0;
+    vault.read = async (path) => {
+      active++;
+      maximum = Math.max(maximum, active);
+      await Promise.resolve();
+      // 保留文件原文，用于解析、指纹校验与正文完整性检查
+      const content = await original(path);
+      active--;
+      return content;
     };
-    await expect(
-      repository.edit(item, { ...item, title: "旧标题" }),
-    ).rejects.toThrow("已修改");
-    expect(
-      splitNote(await vault.read(item.path), vault.parseYaml).fields.title,
-    ).toBe("外部修改后的标题");
+    // 进度只在批次边界发布，不做六十四次完整月历重建
+    const repository = new ItemRepository(vault, "Daylane/Items", false);
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    let renders = 0;
+    repository.changes.subscribe(() => {
+      renders++;
+    });
+    await repository.scan();
+    expect(maximum).toBeLessThanOrEqual(16);
+    expect(renders).toBeLessThanOrEqual(4);
   });
 });

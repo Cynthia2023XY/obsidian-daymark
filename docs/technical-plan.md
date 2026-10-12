@@ -1,3 +1,5 @@
+> 历史首版方案。0.2.0 以 [单日事项改造方案](change-plan.md) 和当前 README 为准。
+
 ---
 created: 2026-10-11
 status: 技术方案草案

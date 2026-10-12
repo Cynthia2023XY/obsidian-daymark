@@ -15,7 +15,7 @@ const builder = await context({
   minify: false,
   logLevel: "info",
   banner: {
-    js: "/* Daylane - MIT License, Copyright (c) 2026 Cynthia2023XY */",
+    js: "/* Daymark - MIT License, Copyright (c) 2026 Cynthia Ding */",
   },
 });
 if (watching) await builder.watch();

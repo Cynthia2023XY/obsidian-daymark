@@ -1,10 +1,10 @@
 {
-  "name": "obsidian-daylane",
-  "version": "0.1.0",
+  "name": "obsidian-daymark",
+  "version": "0.2.0",
   "description": "Chinese holiday calendars, Markdown events, rolling to-dos and an independent focus timer.",
   "private": true,
   "license": "MIT",
-  "author": "Cynthia2023XY",
+  "author": "Cynthia Ding",
   "engines": {
     "node": ">=22"
   },

@@ -1,201 +1,147 @@
 import { App, Modal } from "obsidian";
-import { COLORS, Item, ItemDraft, safeFolder } from "./domain";
-import { MigrationService } from "./migration";
+import { Item, ItemStatus, localDay, validDay } from "./domain";
+import { MigrationChoice, MigrationService } from "./migration";
 import { button, element, UiHost } from "./ui";
 
-/** 普通表单输入，让中文字段名称与辅助说明一起呈现 */
-function field(
-  parent: HTMLElement,
-  label: string,
-  value: string,
-  type = "text",
-): HTMLInputElement {
-  // 使用 label 嵌套保证键盘与读屏可识别
-  const wrapper = element(parent, "label", "", label);
-  // 创建或读取可操作表单控件，保留尚未提交的输入
-  const input = element(wrapper, "input");
-  input.type = type;
-  input.value = value;
-  return input;
-}
-/** 受控选项，不从用户正文生成 HTML */
-function select(
-  parent: HTMLElement,
-  label: string,
-  value: string,
-  choices: [string, string][],
-): HTMLSelectElement {
-  // 把输入与中文标签关联，支持键盘和读屏使用
-  const wrapper = element(parent, "label", "", label);
-  // 创建或读取可操作表单控件，保留尚未提交的输入
-  const input = element(wrapper, "select");
-  // 逐项处理当前业务集合，保留每项自己的状态与结果
-  for (const [key, title] of choices) {
-    // 为受控输入添加合法选项，不猜测用户配置
-    const option = element(input, "option", "", title);
-    option.value = key;
-  }
-  input.value = value;
-  return input;
-}
-/** 新建与编辑事项，保存后保留笔记正文 */
+/** 只有名称的新建弹窗，日期来自用户选中的日历 */
 export class ItemModal extends Modal {
-  /** 注入共享业务服务与默认日期 */
+  /** 注入单日业务宿主 */
   constructor(
     app: App,
     private host: UiHost,
-    private date: string,
-    private item?: Item,
+    private date?: string,
   ) {
     super(app);
   }
-  /** 构建事项表单与明确的日期类型 */
+  /** 参考图中的事项名称与单个创建按钮 */
   onOpen(): void {
     this.contentEl.replaceChildren();
-    element(this.contentEl, "h2", "", this.item ? "编辑事项" : "新建事项");
+    this.setTitle(
+      this.date ? "新建 " + this.date + " 重要事项" : "新建待办箱事项",
+    );
     // 组织单次事项编辑，成功写入后才关闭表单
-    const form = element(this.contentEl, "form", "daylane-form");
-    // 保存可读标题，用于展示、表单编辑与文件命名
-    const title = field(form, "标题", this.item?.title ?? "");
-    title.required = true;
-    title.maxLength = 300;
-    // 区分可流转待办和保持原日期的固定日程
-    const kind = select(form, "类型", this.item?.kind ?? "todo", [
-      ["todo", "待办：可自动顺延"],
-      ["event", "固定日程：保留排期"],
-    ]);
-    // 明确生命周期状态，决定是否允许自动流转
-    const status = select(form, "状态", this.item?.status ?? "open", [
-      ["open", "未完成"],
-      ["completed", "已完成"],
-      ["cancelled", "已取消"],
-    ]);
-    // 根据事项类型显示对应日期字段
-    const dates = element(form, "div", "daylane-form");
-    // 记录待办计划执行日期，与固定截止日期分开
-    const scheduled = field(
-      dates,
-      "待办计划日期",
-      this.item?.scheduled ?? this.date,
-      "date",
+    const form = element(this.contentEl, "form", "daylane-create-form");
+    // 呈现单条事项详情与明确操作入口
+    const row = element(form, "label", "daylane-create-row");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const description = element(row, "span");
+    element(description, "strong", "", "事项内容");
+    element(
+      description,
+      "small",
+      "",
+      "将保存为 Vault 中的独立 Markdown 文件。",
     );
-    // 保存截止边界，流转不改变这项约束
-    const deadline = field(
-      dates,
-      "截止日期（可选，流转不改变）",
-      this.item?.deadline ?? "",
-      "date",
-    );
-    // 记录有效开始日期或周内起点，决定排期范围
-    const start = field(
-      dates,
-      "固定日程开始日期",
-      this.item?.start ?? this.date,
-      "date",
-    );
-    // 记录包含当天的结束日期或周内终点
-    const end = field(
-      dates,
-      "固定日程结束日期（包含当天）",
-      this.item?.end ?? this.date,
-      "date",
-    );
-    // 提供单条待办对全局自动流转的覆盖方式
-    const rollover = select(
-      dates,
-      "待办流转方式",
-      this.item?.rollover ?? "inherit",
-      [
-        ["inherit", "跟随全局设置"],
-        ["auto", "自动流转"],
-        ["off", "不流转"],
-      ],
-    );
-    // 保存所属项目条件，便于查看特定排期
-    const project = field(form, "所属项目（可选）", this.item?.project ?? "");
-    // 选择受控颜色，避免不可信内容进入样式
-    const color = select(
-      form,
-      "颜色",
-      this.item?.color ?? this.host.getPreferences().color,
-      COLORS.map((value, index) => [
-        value,
-        ["蓝", "绿", "橙", "红", "紫", "灰"][index],
-      ]),
-    );
-    // 向用户展示保存失败，失败时保留表单输入
-    const errorEl = element(form, "div", "daylane-form-error");
-    errorEl.setAttribute("role", "alert");
-    // 组织用户显式操作，展示模式可整体隐藏
-    const actions = element(form, "div", "daylane-actions");
-    // 保存或模拟持久化边界，检查写入成功后再确认完成
-    const save = element(actions, "button", "mod-cta", "保存");
-    save.type = "submit";
-    button(actions, "取消", () => this.close(), this.host.notify);
-    // 隐藏非当前类型字段，保留输入以便切换回来
-    const updateType = (): void => {
-      // 逐项处理当前业务集合，保留每项自己的状态与结果
-      for (const input of [scheduled, deadline, rollover])
-        input.parentElement!.hidden = kind.value !== "todo";
-      // 逐项处理当前业务集合，保留每项自己的状态与结果
-      for (const input of [start, end])
-        input.parentElement!.hidden = kind.value !== "event";
-    };
-    kind.addEventListener("change", updateType);
-    updateType();
+    // 创建或读取可操作表单控件，保留尚未提交的输入
+    const input = element(row, "input");
+    input.type = "text";
+    input.placeholder = "例如：提交项目材料";
+    input.required = true;
+    input.maxLength = 300;
+    input.setAttribute("aria-label", "事项内容");
+    // 逐项记录可解释的失败，不把部分失败报告成全部成功
+    const errors = element(form, "p", "daylane-form-error");
+    errors.setAttribute("role", "alert");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const footer = element(form, "div", "daylane-create-footer");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const create = element(footer, "button", "mod-cta", "创建重要事项");
+    create.type = "submit";
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      save.disabled = true;
-      errorEl.textContent = "";
-      // 组织表单业务字段，存储身份与原始正文由仓库维护
-      const draft: ItemDraft = {
-        title: title.value.trim(),
-        kind: kind.value as Item["kind"],
-        status: status.value as Item["status"],
-        scheduled: scheduled.value,
-        deadline: deadline.value || undefined,
-        start: start.value,
-        end: end.value,
-        rollover: rollover.value as Item["rollover"],
-        project: project.value,
-        color: color.value,
-      };
-      Promise.resolve()
-        .then(async () => {
-          if (this.item) await this.host.repository.edit(this.item, draft);
-          else await this.host.repository.create(draft);
-          // 编辑可能重新打开过期待办，宿主负责立即重新检查流转
-          await this.host.afterEdit();
+      if (create.disabled) return;
+      create.disabled = true;
+      errors.textContent = "";
+      this.host.repository
+        .create({ title: input.value, date: this.date })
+        .then((item) => {
+          if (item.title !== input.value.trim())
+            this.host.notify("已创建：" + item.title + ".md");
           this.close();
         })
         .catch((error) => {
-          errorEl.textContent =
+          errors.textContent =
             error instanceof Error ? error.message : String(error);
-          save.disabled = false;
+          create.disabled = false;
         });
     });
-    title.focus();
+    input.focus();
   }
-  /** 关闭后不保留已过期表单内容 */
+  /** 关闭后释放已过期输入 */
   onClose(): void {
     this.contentEl.replaceChildren();
   }
 }
-/** 删除等明确动作使用可审阅的确认框 */
-export class ConfirmModal extends Modal {
-  /** 描述具体操作与成功执行回调 */
+/** 手动流转的独立日期选择，不再打开配置表单 */
+export class DateModal extends Modal {
+  /** 注入当前事项与保存回调 */
   constructor(
     app: App,
-    private title: string,
+    private item: Item,
+    private save: (date: string) => Promise<void>,
+  ) {
+    super(app);
+  }
+  /** 只选择今天或未来日期，累计次数明确保留 */
+  onOpen(): void {
+    this.setTitle("安排「" + this.item.title + "」");
+    // 组织单次事项编辑，成功写入后才关闭表单
+    const form = element(this.contentEl, "form", "daylane-date-form");
+    element(
+      form,
+      "p",
+      "daylane-muted",
+      "手动改期不会增加或清零累计自动流转次数。",
+    );
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const label = element(form, "label", "", "指定日期 ");
+    // 创建或读取可操作表单控件，保留尚未提交的输入
+    const input = element(label, "input");
+    input.type = "date";
+    input.min = localDay();
+    input.required = true;
+    input.value =
+      this.item.date && this.item.date >= localDay()
+        ? this.item.date
+        : localDay();
+    // 逐项记录可解释的失败，不把部分失败报告成全部成功
+    const errors = element(form, "p", "daylane-form-error");
+    // 保存或模拟持久化边界，检查写入成功后再确认完成
+    const save = element(form, "button", "mod-cta", "确认日期");
+    save.type = "submit";
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (save.disabled) return;
+      if (!validDay(input.value) || input.value < localDay()) {
+        errors.textContent = "请选择今天或未来的有效日期";
+        return;
+      }
+      save.disabled = true;
+      this.save(input.value)
+        .then(() => this.close())
+        .catch((error) => {
+          errors.textContent = String(error);
+          save.disabled = false;
+        });
+    });
+    input.focus();
+  }
+}
+/** 默认删除行为执行前说明具体文档与回收方式 */
+export class ConfirmModal extends Modal {
+  /** 明确用户将执行的动作 */
+  constructor(
+    app: App,
+    private heading: string,
     private message: string,
     private action: () => Promise<void>,
     private report: (message: string) => void,
   ) {
     super(app);
   }
-  /** 只有点击确认才执行写入 */
+  /** 确認按钮不会重复触发写入 */
   onOpen(): void {
-    element(this.contentEl, "h2", "", this.title);
+    this.setTitle(this.heading);
     element(this.contentEl, "p", "", this.message);
     // 执行用户确认的具体动作，防止重复触发同一操作
     const confirm = button(
@@ -216,83 +162,174 @@ export class ConfirmModal extends Modal {
     button(this.contentEl, "取消", () => this.close(), this.report);
   }
 }
-/** 手动迁移预览，旧 Calendar Plus 文件保持原状 */
+/** 旧属性预览、明确选择复杂项、JSON 备份后再转换 */
 export class ImportModal extends Modal {
-  /** 注入新插件共享仓库 */
+  /** 注入当前配置范围内的事项仓库 */
   constructor(
     app: App,
     private host: UiHost,
+    private migrated: () => Promise<void>,
   ) {
     super(app);
   }
-  /** 先预览，再显式执行复制导入 */
+  /** 提供迁移范围与字段处理选项，不在启动时直接改原文 */
   onOpen(): void {
-    element(this.contentEl, "h2", "", "导入 Calendar Plus 重要事项");
+    this.setTitle("旧重要事项迁移");
     element(
       this.contentEl,
       "p",
       "",
-      "旧文件保持原样；导入为单日固定日程，不自动流转。后续可逐条改为待办。",
+      "扫描当前配置范围；转换前备份原文到插件 backups 目录。未完成历史事项转换后会按新规则自动流转。",
     );
-    // 读取用户指定目录，限定索引与迁移范围
-    const folder = field(
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const cleanLabel = element(
       this.contentEl,
-      "旧事项所在目录",
-      "Calendar Important Events",
+      "label",
+      "daylane-migration-option",
+    );
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const clean = element(cleanLabel, "input");
+    clean.type = "checkbox";
+    clean.checked = true;
+    element(
+      cleanLabel,
+      "span",
+      "",
+      "清理旧插件业务属性：日期、状态、标题、颜色、项目、起止与截止日期、旧创建／更新时间等；其他属性与正文保留",
+    );
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const normalizeLabel = element(
+      this.contentEl,
+      "label",
+      "daylane-migration-option",
+    );
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const normalize = element(normalizeLabel, "input");
+    normalize.type = "checkbox";
+    element(
+      normalizeLabel,
+      "span",
+      "",
+      "同时规范已验证的旧随机文件名，以及插件生成的一级标题（使用数字处理重名）",
     );
     // 展示预览与逐项结果，供用户核对后执行
-    const output = element(this.contentEl, "div");
+    const output = element(this.contentEl, "div", "daylane-migration-output");
     // 组合真实业务服务与可控边界，验证完整行为链
     const service = new MigrationService(this.host.repository);
-    // 触发只读迁移预览并避免并发重复扫描
-    const previewButton = button(
+    // 在写入前收集可审阅的迁移项与错误
+    const preview = button(
       this.contentEl,
-      "预览",
+      "扫描并预览",
       async () => {
-        previewButton.disabled = true;
+        preview.disabled = true;
+        output.replaceChildren();
         try {
-          // 使用明确的 Vault 相对路径，定位本次读写对象
-          const path = safeFolder(folder.value);
-          // 在写入前收集可审阅的迁移项与错误
-          const preview = await service.preview(path);
-          output.replaceChildren();
+          // 汇总实际操作成功、跳过与失败，避免向用户伪报结果
+          const result = await service.preview();
           element(
             output,
             "p",
             "",
-            `将复制 ${preview.candidates.length} 条事项到 ${this.host.getPreferences().folder}；跳过 ${preview.duplicates} 个重复来源。`,
+            "发现 " +
+              result.candidates.length +
+              " 个旧事项。跨日或取消状态项必须明确选择。",
           );
+          // 保存当前处理阶段的事实结果，供后续校验与展示
+          const choices: (() => MigrationChoice | null)[] = [];
           // 逐项处理当前业务集合，保留每项自己的状态与结果
-          for (const candidate of preview.candidates)
+          for (const candidate of result.candidates) {
+            // 呈现单条事项详情与明确操作入口
+            const row = element(output, "div", "daylane-migration-row");
+            // 保存当前处理阶段的事实结果，供后续校验与展示
+            const includeLabel = element(row, "label");
+            // 保存当前处理阶段的事实结果，供后续校验与展示
+            const include = element(includeLabel, "input");
+            include.type = "checkbox";
+            include.checked = !candidate.reason;
+            element(includeLabel, "strong", "", candidate.path);
             element(
-              output,
-              "div",
+              row,
+              "p",
               "daylane-muted",
-              `${candidate.draft.title} · ${candidate.path}`,
+              candidate.source +
+                (candidate.reason ? " · " + candidate.reason : ""),
             );
+            // 保存当前处理阶段的事实结果，供后续校验与展示
+            const dateLabel = element(
+              row,
+              "label",
+              "",
+              "单日日期（留空进入待办箱） ",
+            );
+            // 按本地自然日计算排期，避开 UTC 解析偏移
+            const date = element(dateLabel, "input");
+            date.type = "date";
+            date.value = candidate.date ?? "";
+            // 保存当前处理阶段的事实结果，供后续校验与展示
+            const statusLabel = element(row, "label", "", "完成状态 ");
+            // 明确生命周期状态，决定是否允许自动流转
+            const status = element(statusLabel, "select");
+            // 逐项处理当前业务集合，保留每项自己的状态与结果
+            for (const [value, label] of [
+              ["", "请选择"],
+              ["open", "未完成"],
+              ["completed", "已完成"],
+            ]) {
+              // 为受控输入添加合法选项，不猜测用户配置
+              const option = element(status, "option", "", label);
+              option.value = value;
+            }
+            status.value = candidate.status ?? "";
+            choices.push(() => {
+              if (!include.checked) return null;
+              if (status.value !== "open" && status.value !== "completed")
+                throw new Error("请选择完成状态：" + candidate.path);
+              if (date.value && !validDay(date.value))
+                throw new Error("日期无效：" + candidate.path);
+              return {
+                candidate,
+                date: date.value || undefined,
+                status: status.value as ItemStatus,
+              };
+            });
+          }
           // 逐项处理当前业务集合，保留每项自己的状态与结果
-          for (const message of preview.errors)
+          for (const message of result.errors)
             element(output, "p", "daylane-warning", message);
-          if (!preview.candidates.length) return;
+          if (!result.candidates.length) return;
           // 只在用户确认后复制预览中的源事项
           const execute = button(
             output,
-            "确认复制导入",
+            "确认备份并转换所选文档",
             async () => {
+              // 保存当前处理阶段的事实结果，供后续校验与展示
+              const selected = choices
+                .map((choice) => choice())
+                .filter((choice): choice is MigrationChoice => choice !== null);
+              if (!selected.length) throw new Error("请先选择要转换的事项");
               execute.disabled = true;
               try {
-                // 汇总实际操作成功、跳过与失败，避免向用户伪报结果
-                const result = await service.execute(preview.candidates);
+                // 保存当前处理阶段的事实结果，供后续校验与展示
+                const converted = await service.execute(
+                  selected,
+                  clean.checked,
+                  normalize.checked,
+                );
                 output.replaceChildren();
                 element(
                   output,
                   "p",
                   "",
-                  `已复制 ${result.created} 条事项；旧文件未修改。`,
+                  "已转换 " +
+                    converted.changed +
+                    " 个事项；保存 " +
+                    converted.backups.length +
+                    " 份 JSON 原文备份。",
                 );
                 // 逐项处理当前业务集合，保留每项自己的状态与结果
-                for (const message of result.errors)
-                  element(output, "p", "daylane-warning", message);
+                for (const error of converted.errors)
+                  element(output, "p", "daylane-warning", error);
+                await this.migrated();
               } finally {
                 execute.disabled = false;
               }
@@ -301,7 +338,7 @@ export class ImportModal extends Modal {
             "mod-cta",
           );
         } finally {
-          previewButton.disabled = false;
+          preview.disabled = false;
         }
       },
       this.host.notify,

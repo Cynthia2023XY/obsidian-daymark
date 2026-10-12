@@ -26,6 +26,8 @@ export function parseYaml(source: string): unknown {
 export class Plugin {
   /** 宿主保存的配置内容 */
   data: unknown = null;
+  /** 模拟插件位置 */
+  manifest = { dir: ".obsidian/plugins/daylane" };
   /** 视图创建工厂 */
   factories = new Map<string, (leaf: unknown) => unknown>();
   /** 注册的可执行命令 */
@@ -47,6 +49,8 @@ export class Plugin {
   >();
   /** 自动清理的宿主资源 */
   disposers: (() => void)[] = [];
+  /** 已注册设置页，验证卡片内容 */
+  tabs: unknown[] = [];
   /** 注入模拟公开 App，不侵入插件实现 */
   constructor(public app: any) {}
   /** 模拟持久化读取 */
@@ -79,7 +83,9 @@ export class Plugin {
   /** 不模拟实际图标绘制 */
   addRibbonIcon(): void {}
   /** 保存设置页无需打开真实 App */
-  addSettingTab(): void {}
+  addSettingTab(tab: unknown): void {
+    this.tabs.push(tab);
+  }
   /** 命令通过公开模块边界验证 */
   addCommand(command: (typeof this.registeredCommands)[number]): void {
     this.registeredCommands.push(command);
@@ -130,6 +136,10 @@ export class Modal {
   open(): void {
     (this as unknown as { onOpen: () => void }).onOpen();
   }
+  /** 设置真实弹窗标题的公开边界 */
+  setTitle(title: string): void {
+    this.contentEl.setAttribute("data-title", title);
+  }
   /** 清理模拟表单 */
   close(): void {
     this.contentEl.replaceChildren();
@@ -144,3 +154,38 @@ export class PluginSettingTab {
 }
 /** 设置链在生命周期测试中无需渲染 */
 export class Setting {}
+
+/** 捕获菜单供右键行为断言 */
+export class Menu {
+  /** 菜单标题及用户选择回调 */
+  entries: { title: string; action?: () => void }[] = [];
+  /** 最近展示的菜单 */
+  static last: Menu | null = null;
+  /** 按宿主链式 API 创建菜单项 */
+  addItem(build: (item: any) => void): this {
+    // 独立菜单项可观察结果
+    const entry: { title: string; action?: () => void } = { title: "" };
+    // 模拟公开构建接口
+    const item = {
+      setTitle: (title: string) => {
+        entry.title = title;
+        return item;
+      },
+      onClick: (action: () => void) => {
+        entry.action = action;
+        return item;
+      },
+    };
+    build(item);
+    this.entries.push(entry);
+    return this;
+  }
+  /** 分隔符不参与命令数 */
+  addSeparator(): this {
+    return this;
+  }
+  /** 记录菜单展示位置 */
+  showAtMouseEvent(_event: MouseEvent): void {
+    Menu.last = this;
+  }
+}

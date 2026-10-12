@@ -1,217 +1,402 @@
 .daylane-root {
-  --daylane-blue: #4a8dde;
-  --daylane-green: #419b7a;
-  --daylane-orange: #cb8736;
-  --daylane-red: #d16565;
-  --daylane-purple: #9876c5;
-  --daylane-gray: #7d8794;
-  padding: 12px;
+  --daylane-accent: #4285df;
+  --daylane-dot: #ff454f;
+  --daylane-pink: #ff83b5;
+  --daylane-work: #ed9838;
   container-type: inline-size;
+  padding: 16px 14px 20px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
 }
-.daylane-toolbar,
-.daylane-actions,
-.daylane-timer-controls {
+.daylane-root button {
+  font-family: inherit;
+}
+.daylane-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 22px 32px;
+  gap: 14px;
+}
+.daylane-month-heading {
+  padding: 0;
+  display: flex;
+  gap: 0.28em;
+  align-items: baseline;
+  color: var(--text-normal);
+  font-size: clamp(24px, 6.8cqi, 48px);
+  line-height: 1.2;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  height: auto;
+}
+.daylane-year {
+  color: var(--daylane-accent);
+  font-weight: 700;
+}
+.daylane-navigation {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 3.8cqi, 28px);
+}
+.daylane-nav-arrow,
+.daylane-today-button {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  padding: 0;
+  height: auto;
+}
+.daylane-today-button {
+  font-size: clamp(13px, 3.4cqi, 24px);
+  font-weight: 600;
+}
+.daylane-nav-arrow {
+  width: 22px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+}
+.daylane-chevron {
+  display: block;
+  border-top: 4px solid currentColor;
+  border-right: 4px solid currentColor;
+  width: 14px;
+  height: 14px;
+}
+.daylane-chevron.left {
+  transform: rotate(-135deg);
+}
+.daylane-chevron.right {
+  transform: rotate(45deg);
+}
+.daylane-month-picker {
+  display: block;
+  margin: 0 auto 12px;
+}
+.daylane-month-picker[hidden] {
+  display: none;
+}
+.daylane-weekdays,
+.daylane-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.daylane-weekdays {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: clamp(12px, 2.9cqi, 20px);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.daylane-grid {
+  row-gap: 4px;
+}
+.daylane-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  height: clamp(32px, 8.6cqi, 60px);
+  padding: 8px 0 4px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: clamp(13px, 3.5cqi, 24px);
+  font-weight: 500;
+}
+.daylane-day:hover {
+  background: var(--background-modifier-hover);
+}
+.daylane-day.is-outside {
+  opacity: 0.25;
+}
+.daylane-day.is-today {
+  color: var(--daylane-accent);
+}
+.daylane-day.is-holiday {
+  color: var(--daylane-dot);
+}
+.daylane-day.is-workday {
+  color: var(--daylane-work);
+}
+.daylane-day.is-selected,
+.daylane-day.is-selected:hover {
+  background: var(--daylane-accent);
+  color: #fff;
+}
+.daylane-holiday {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  border-radius: 5px;
+  padding: 0 4px;
+  font-size: clamp(8px, 2cqi, 14px);
+  line-height: 1.65;
+}
+.daylane-holiday.holiday {
+  color: var(--daylane-dot);
+  background: color-mix(in srgb, var(--daylane-dot) 17%, transparent);
+}
+.daylane-holiday.workday {
+  color: var(--daylane-work);
+  background: color-mix(in srgb, var(--daylane-work) 20%, transparent);
+}
+.daylane-dot {
+  display: block;
+  background: var(--daylane-dot);
+  border-radius: 50%;
+  width: clamp(5px, 1.4cqi, 10px);
+  height: clamp(5px, 1.4cqi, 10px);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.daylane-detail {
+  margin-top: 32px;
+  padding: 20px 7px 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.daylane-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.daylane-list-header h3 {
+  color: var(--daylane-pink);
+  font-size: clamp(17px, 4.5cqi, 30px);
+  margin: 0;
+  font-weight: 700;
+}
+.daylane-list-header span {
+  font-size: clamp(11px, 3.3cqi, 23px);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.daylane-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+}
+.daylane-item {
+  display: grid;
+  grid-template-columns: clamp(22px, 5.3cqi, 36px) minmax(0, 1fr) 24px;
+  gap: clamp(10px, 4cqi, 28px);
+  align-items: center;
+  min-height: clamp(34px, 8.5cqi, 60px);
+  border-radius: 5px;
+}
+.daylane-item:hover {
+  background: var(--background-modifier-hover);
+}
+.daylane-checkbox[type="checkbox"] {
+  appearance: none;
+  border: 3px solid var(--text-muted);
+  border-radius: 8px;
+  width: clamp(20px, 5.3cqi, 36px);
+  height: clamp(20px, 5.3cqi, 36px);
+  margin: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: transparent;
+}
+.daylane-checkbox[type="checkbox"]:checked {
+  border-color: var(--daylane-accent);
+  background: var(--daylane-accent);
+}
+.daylane-checkbox[type="checkbox"]:checked::after {
+  content: "";
+  width: 35%;
+  height: 58%;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: translateY(-8%) rotate(40deg);
+}
+.daylane-checkbox:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.daylane-item-title {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 2px 0;
+  color: var(--text-normal);
+  font-size: clamp(14px, 3.9cqi, 27px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  height: auto;
+  justify-content: flex-start;
+}
+.daylane-item.is-completed .daylane-item-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.daylane-delete {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 2px;
+  color: var(--text-muted);
+  font-size: 22px;
+  height: auto;
+}
+.daylane-add,
+.daylane-inbox-link,
+.daylane-text-button {
+  display: block;
+  border: 0;
+  box-shadow: none;
+  background: none;
+  color: var(--daylane-accent);
+  padding: 2px 0;
+  height: auto;
+  text-align: left;
+}
+.daylane-add {
+  font-size: clamp(14px, 3.9cqi, 27px);
+}
+.daylane-inbox-link {
+  font-size: clamp(11px, 2.5cqi, 16px);
+  color: var(--text-muted);
+  margin-top: 15px;
+}
+.daylane-muted,
+.daylane-warning,
+.daylane-legacy-notice {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.daylane-warning,
+.daylane-form-error {
+  color: var(--text-error);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.daylane-legacy-notice {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 12px;
 }
-.daylane-toolbar {
-  margin-bottom: 14px;
+.daylane-root:focus-within .daylane-day:focus-visible {
+  outline: 2px solid var(--daylane-accent);
+  outline-offset: 2px;
 }
-.daylane-toolbar input[type="month"] {
-  width: 145px;
+.daylane-create-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
 }
-.daylane-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
-  gap: 18px;
+.daylane-create-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
-.daylane-month {
-  min-width: 0;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.daylane-weekdays,
-.daylane-week {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-}
-.daylane-weekdays {
-  text-align: center;
-  background: var(--background-secondary);
-  padding: 8px 0;
-}
-.daylane-week {
-  border-top: 1px solid var(--background-modifier-border);
-  gap: 3px 0;
-  padding-bottom: 4px;
-}
-.daylane-day {
-  min-height: 115px;
-  min-width: 0;
-  padding: 6px;
-  border-right: 1px solid var(--background-modifier-border);
-  cursor: pointer;
-}
-.daylane-day:nth-child(7) {
-  border-right: 0;
-}
-.daylane-day.is-outside {
-  opacity: 0.48;
-}
-.daylane-day.is-selected {
-  background: var(--background-modifier-hover);
-  box-shadow: inset 0 0 0 1px var(--interactive-accent);
-}
-.daylane-day.is-today .daylane-date-button {
-  color: var(--text-on-accent);
-  background: var(--interactive-accent);
-  border-radius: 50%;
-}
-.daylane-day.is-weekend .daylane-date-button {
+.daylane-create-row small {
   color: var(--text-muted);
 }
-.daylane-day-heading {
+.daylane-create-row input {
+  width: min(45%, 300px);
+}
+.daylane-create-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.daylane-date-form {
+  display: grid;
+  gap: 12px;
+}
+.daylane-settings-card {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+}
+.daylane-settings-card h3 {
+  margin: 0 0 12px;
+}
+.daylane-settings-card details {
+  margin-top: 10px;
+}
+.daylane-settings-card summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.daylane-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
 }
-.daylane-date-button {
-  box-shadow: none;
-  border: 0;
-  background: transparent;
-  padding: 2px 6px;
-  height: 27px;
+.daylane-setting:last-child {
+  border-bottom: 0;
 }
-.daylane-holiday {
-  font-size: 11px;
-  padding: 1px 4px;
-  border-radius: 4px;
+.daylane-setting-text {
+  flex: 1;
 }
-.daylane-holiday.holiday {
-  color: var(--daylane-red);
-  background: color-mix(in srgb, var(--daylane-red) 12%, transparent);
-}
-.daylane-holiday.workday {
-  color: var(--daylane-blue);
-  background: color-mix(in srgb, var(--daylane-blue) 12%, transparent);
-}
-.daylane-holiday-name {
-  color: var(--text-muted);
-  font-size: 10px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.daylane-chip {
+.daylane-setting-text small {
   display: block;
-  width: 100%;
-  height: auto;
-  min-height: 25px;
+  color: var(--text-muted);
   margin-top: 4px;
-  padding: 4px 5px;
-  text-align: left;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 12px;
-  border: 0;
-  border-left: 3px solid var(--daylane-item-color);
-  border-radius: 4px;
-  box-shadow: none;
-  color: var(--text-normal);
-  background: color-mix(
-    in srgb,
-    var(--daylane-item-color) 17%,
-    var(--background-primary)
-  );
 }
-.daylane-color-blue {
-  --daylane-item-color: var(--daylane-blue);
+.daylane-setting-control {
+  max-width: 48%;
 }
-.daylane-color-green {
-  --daylane-item-color: var(--daylane-green);
+.daylane-migration-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
 }
-.daylane-color-orange {
-  --daylane-item-color: var(--daylane-orange);
-}
-.daylane-color-red {
-  --daylane-item-color: var(--daylane-red);
-}
-.daylane-color-purple {
-  --daylane-item-color: var(--daylane-purple);
-}
-.daylane-color-gray {
-  --daylane-item-color: var(--daylane-gray);
-}
-.daylane-span {
-  grid-column: var(--daylane-start) / var(--daylane-end);
-  grid-row: var(--daylane-row);
-  margin: 0 2px;
-  width: auto;
-}
-.is-completed {
-  opacity: 0.55;
-  text-decoration: line-through;
-}
-.daylane-more {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-  font-size: 11px;
-  padding: 3px 0;
-  color: var(--text-muted);
-}
-.daylane-detail {
-  min-width: 0;
-  max-height: 850px;
-  overflow: auto;
-}
-.daylane-list h3 {
-  margin: 0 0 10px;
-  font-size: 14px;
-}
-.daylane-list {
-  margin-bottom: 20px;
-}
-.daylane-item {
-  padding: 10px;
+.daylane-migration-row {
+  padding: 12px;
+  margin: 12px 0;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  margin-bottom: 8px;
+  border-radius: 7px;
 }
-.daylane-actions {
-  margin-top: 8px;
-  gap: 5px;
-}
-.daylane-actions button {
-  font-size: 11px;
-  padding: 3px 7px;
-  height: auto;
-}
-.daylane-muted {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.daylane-warning {
-  color: var(--text-warning);
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.daylane-migration-row > label {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 7px;
 }
 .daylane-timer {
   padding: 18px;
 }
 .daylane-timer-display {
   font-size: clamp(40px, 8vw, 80px);
-  font-variant-numeric: tabular-nums;
   text-align: center;
+  font-variant-numeric: tabular-nums;
   margin: 20px 0;
 }
 .daylane-timer-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   border: 0;
   padding: 0;
 }
@@ -227,61 +412,25 @@
   cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
-.daylane-form {
-  display: grid;
-  gap: 12px;
-}
-.daylane-form label {
-  display: grid;
-  gap: 5px;
-}
-.daylane-form input,
-.daylane-form select,
-.daylane-form textarea {
-  width: 100%;
-}
-.daylane-form-error {
-  color: var(--text-error);
-  white-space: pre-wrap;
-}
-.daylane-compact .daylane-layout {
-  display: block;
-}
-.daylane-compact .daylane-detail {
-  margin-top: 16px;
-}
-.daylane-compact .daylane-day {
-  min-height: 65px;
-  padding: 2px;
-}
-.daylane-compact .daylane-chip {
-  font-size: 10px;
-}
-.daylane-compact .daylane-toolbar {
-  gap: 4px;
-}
-.daylane-compact .daylane-toolbar button {
-  font-size: 11px;
-  padding: 3px 5px;
-}
-@container (max-width: 750px) {
-  .daylane-layout {
-    grid-template-columns: 1fr;
+@container (max-width: 430px) {
+  .daylane-nav {
+    margin: 0 8px 22px;
   }
   .daylane-detail {
-    max-height: none;
+    margin-top: 22px;
+    padding: 14px 0 0;
   }
-}
-@container (max-width: 430px) {
-  .daylane-day {
-    min-height: 70px;
-    padding: 2px;
+  .daylane-chevron {
+    width: 9px;
+    height: 9px;
+    border-width: 3px;
   }
-  .daylane-chip {
-    font-size: 10px;
-    padding: 3px;
+  .daylane-holiday {
+    padding: 0 2px;
+    right: 1px;
   }
-  .daylane-toolbar {
-    gap: 4px;
+  .daylane-checkbox[type="checkbox"] {
+    border-width: 2px;
+    border-radius: 5px;
   }
 }

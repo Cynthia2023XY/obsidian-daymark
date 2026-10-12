@@ -1,122 +1,69 @@
-/** 单条事项的类型：待办可以流转，固定日程保持排期 */
-export type ItemKind = "todo" | "event";
-/** 事项生命周期，取消与完成均停止自动流转 */
-export type ItemStatus = "open" | "completed" | "cancelled";
-/** 单条待办对全局自动流转设置的覆盖方式 */
-export type RolloverPolicy = "inherit" | "auto" | "off";
-/** 事项允许使用的主题兼容颜色名称 */
-export const COLORS = [
-  "blue",
-  "green",
-  "orange",
-  "red",
-  "purple",
-  "gray",
-] as const;
-/** 在文件与内存之间传递的重要事项 */
+/** 单日事项只有未完成与完成两种状态 */
+export type ItemStatus = "open" | "completed";
+/** 日历和待办箱共享同一文档；没有日期时属于待办箱 */
 export interface Item {
-  /** 稳定事项身份，文件更名后仍保持不变 */
-  id: string;
-  /** 当前 Markdown 文件路径 */
+  /** 当前文档路径，更名由文件事件重新关联 */
   path: string;
-  /** 用户可读的事项标题 */
+  /** 文件名是展示标题，不依赖正文标题识别 */
   title: string;
-  /** 待办或固定日程 */
-  kind: ItemKind;
-  /** 完成与取消状态 */
+  /** 计划日期；缺失表示未安排 */
+  date?: string;
+  /** 事项完成状态 */
   status: ItemStatus;
-  /** 待办的计划执行日期 */
-  scheduled?: string;
-  /** 首次计划日期，自动顺延不改动 */
-  originalScheduled?: string;
-  /** 待办的固定截止日期 */
-  deadline?: string;
-  /** 固定日程开始日期 */
-  start?: string;
-  /** 固定日程结束日期，包含当天 */
-  end?: string;
-  /** 所属项目，用于日历筛选 */
-  project: string;
-  /** 受控颜色名称 */
-  color: string;
-  /** 自动流转覆盖方式 */
-  rollover: RolloverPolicy;
-  /** 实际成功顺延次数 */
+  /** 累计实际自动改期次数，手动操作永不清零 */
   rolloverCount: number;
-  /** 最近修改时间，用于检测撤回冲突 */
-  updated: string;
+  /** 旧格式仅兼容展示，确认迁移前不自动写入 */
+  legacy: boolean;
 }
-/** 创建或编辑表单提供的业务字段 */
-export type ItemDraft = Omit<
-  Item,
-  "id" | "path" | "originalScheduled" | "rolloverCount" | "updated"
->;
-/** 单条流转的可恢复记录 */
-export interface RolloverRecord {
-  /** 流转目标事项身份 */
-  id: string;
-  /** 稳定笔记路径 */
-  path: string;
-  /** 原计划日期 */
-  from: string;
-  /** 本次流转后的计划日期 */
-  to: string;
-  /** 本次流转前的次数 */
-  previousCount: number;
-  /** 写入版本标记，撤回时校验 */
-  updated: string;
-  /** 流转后原始文件指纹，外部修改后不自动撤回 */
-  fingerprint?: string;
-  /** 是否已完成笔记写入 */
-  applied: boolean;
-  /** 前一次来源日期，供恢复流转痕迹使用 */
-  previousFrom?: string;
-  /** 前一次目标日期，供恢复流转痕迹使用 */
-  previousTo?: string;
+/** 新建单日事项所需的最少业务信息 */
+export interface ItemDraft {
+  /** 事项名称 */
+  title: string;
+  /** 计划日期或待办箱空日期 */
+  date?: string;
+  /** 初始状态，默认未完成 */
+  status?: ItemStatus;
 }
-/** 插件持久化偏好与最近一次流转批次 */
+/** 精简设置；番茄钟与事项配置完全独立 */
 export interface Preferences {
-  /** 只在指定目录管理事项 */
+  /** 新文档写入目录 */
   folder: string;
-  /** 新事项默认颜色 */
-  color: string;
-  /** 星期是否从周一开始 */
-  mondayFirst: boolean;
-  /** 是否展示完成和取消事项 */
-  showCompleted: boolean;
-  /** 是否展示放假与调休标记 */
-  showHolidays: boolean;
-  /** 默认是否自动顺延待办 */
-  autoRollover: boolean;
-  /** 顺延到自然日或工作日 */
+  /** 默认只扫描该目录及后代 */
+  limitToFolder: boolean;
+  /** 自然日或中国正式工作日 */
   rolloverMode: "calendar" | "workday";
-  /** 是否启用独立番茄钟 */
+  /** 允许的累计自动改期次数 */
+  maxRollovers: number;
+  /** 实验性：删除时仅移除专属属性 */
+  preserveOnDelete: boolean;
+  /** 是否启用独立计时 */
   timerEnabled: boolean;
-  /** 默认专注分钟数 */
+  /** 专注默认分钟数 */
   focusMinutes: number;
-  /** 默认休息分钟数 */
+  /** 休息默认分钟数 */
   breakMinutes: number;
-  /** 到时是否播放短提示音 */
+  /** 是否播放本地短音 */
   sound: boolean;
-  /** 最近一次流转批次，支持重启后撤回 */
-  lastBatch: RolloverRecord[];
 }
-/** 新安装默认关闭自动写入，不恢复番茄钟运行会话 */
+/** 新版本固定周一、红点、显示所有状态，工作日流转默认启用 */
 export const DEFAULTS: Preferences = {
   folder: "Daylane/Items",
-  color: "blue",
-  mondayFirst: true,
-  showCompleted: true,
-  showHolidays: true,
-  autoRollover: false,
-  rolloverMode: "calendar",
+  limitToFolder: true,
+  rolloverMode: "workday",
+  maxRollovers: 5,
+  preserveOnDelete: false,
   timerEnabled: true,
   focusMinutes: 25,
   breakMinutes: 5,
-  sound: false,
-  lastBatch: [],
+  sound: true,
 };
-
+/** 只管理这些专属属性，删除事项不会误伤通用笔记元信息 */
+export const ITEM_FIELDS = [
+  "daylane-type",
+  "daylane-date",
+  "daylane-status",
+  "daylane-rollover-count",
+] as const;
 /** 以本地日历语义输出日期，避免 UTC 解析偏移 */
 export function localDay(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -162,86 +109,102 @@ export function midnightDelay(now = new Date()): number {
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   return next.getTime() - now.getTime() + 50;
 }
-/** 判断事项是否覆盖指定日期 */
+/** 判断单日事项是否属于当前日期 */
 export function onDay(item: Item, date: string): boolean {
-  return item.kind === "todo"
-    ? item.scheduled === date
-    : Boolean(item.start && item.end && item.start <= date && item.end >= date);
+  return item.date === date;
 }
-/** 将未知文本属性转换为明确的字符串 */
+/** 只将真实字符串视为文本属性 */
 export function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
-/** 校验表单，不以猜测方式修复错误日期 */
-export function validateDraft(draft: ItemDraft): void {
-  if (!draft.title.trim()) throw new Error("请填写事项标题");
-  if (draft.kind === "todo") {
-    if (!validDay(draft.scheduled)) throw new Error("请填写有效的计划日期");
-    if (draft.deadline && !validDay(draft.deadline))
-      throw new Error("截止日期无效");
-  } else if (
-    !validDay(draft.start) ||
-    !validDay(draft.end) ||
-    draft.end < draft.start
-  ) {
-    throw new Error("日程结束日期不能早于开始日期");
-  }
+/** 兼容旧 YAML 日期对象，但新版本只写规范字符串 */
+export function dateText(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  // 按本地自然日计算排期，避开 UTC 解析偏移
+  const date = value instanceof Date ? value.toISOString().slice(0, 10) : value;
+  if (!validDay(date)) throw new Error("日期无效，请使用 YYYY-MM-DD");
+  return date;
 }
-/** 从 frontmatter 读取受控事项字段，无标记的笔记保持原状 */
+/** 累计次数是客观记录，不接受负数、小数或隐式截断 */
+export function countValue(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0)
+    throw new Error("自动流转次数应为非负整数");
+  return value;
+}
+/** 从文件路径派生展示名称，正文标题变化不影响身份 */
+export function itemTitle(path: string): string {
+  return path.split("/").pop()!.replace(/\.md$/i, "");
+}
+/** 识别新模型；日期缺失是待办箱而非错误 */
 export function parseItem(
   fields: Record<string, unknown>,
   path: string,
 ): Item | null {
-  if (fields["daylane-schema"] !== 1) return null;
-  if (!text(fields["daylane-id"])) throw new Error("事项缺少身份 ID");
-  if (!["todo", "event"].includes(text(fields["daylane-kind"])))
-    throw new Error("事项类型无效");
-  if (!["open", "completed", "cancelled"].includes(text(fields.status)))
-    throw new Error("事项状态无效");
-  // 限定可写字段，保留其他属性由存储层维护
-  const item: Item = {
-    id: text(fields["daylane-id"]),
+  if (fields["daylane-type"] !== "important-event") return null;
+  // 明确生命周期状态，决定是否允许自动流转
+  const status = fields["daylane-status"] ?? "open";
+  if (status !== "open" && status !== "completed")
+    throw new Error("事项状态只能为 open 或 completed");
+  return {
     path,
-    title: text(fields.title),
-    kind: fields["daylane-kind"] as ItemKind,
-    status: fields.status as ItemStatus,
-    scheduled: text(fields.scheduled) || undefined,
-    originalScheduled: text(fields["original-scheduled"]) || undefined,
-    deadline: text(fields.deadline) || undefined,
-    start: text(fields.start) || undefined,
-    end: text(fields.end) || undefined,
-    project: text(fields.project),
-    color: COLORS.includes(fields.color as (typeof COLORS)[number])
-      ? text(fields.color)
-      : "blue",
-    rollover: ["inherit", "auto", "off"].includes(text(fields.rollover))
-      ? (fields.rollover as RolloverPolicy)
-      : "inherit",
-    rolloverCount:
-      typeof fields["rollover-count"] === "number"
-        ? fields["rollover-count"]
-        : 0,
-    updated: text(fields.updated),
+    title: itemTitle(path),
+    date: dateText(fields["daylane-date"]),
+    status,
+    rolloverCount: countValue(fields["daylane-rollover-count"]),
+    legacy: false,
   };
-  validateDraft(item);
-  return item;
 }
-/** 将事项编辑映射为属性更新，仅编辑业务字段 */
-export function draftFields(draft: ItemDraft): Record<string, unknown> {
+/** 旧版只读兼容，复杂或取消事项必须在迁移预览中明确处理 */
+export function legacyItem(
+  fields: Record<string, unknown>,
+  path: string,
+): Item | null {
+  // 保存当前处理阶段的事实结果，供后续校验与展示
+  const daylane = fields["daylane-schema"] === 1;
+  if (!daylane && fields["calendar-plus-type"] !== "important-event")
+    return null;
+  if (fields.status !== "open" && fields.status !== "completed")
+    throw new Error("旧取消或异常状态事项需要迁移确认");
+  // 按本地自然日计算排期，避开 UTC 解析偏移
+  const date = daylane
+    ? fields["daylane-kind"] === "event"
+      ? fields.start
+      : fields.scheduled
+    : fields.date;
+  if (
+    daylane &&
+    fields["daylane-kind"] === "event" &&
+    fields.start !== fields.end
+  )
+    throw new Error("旧跨日事项需要在迁移时选择单日日期");
+  return {
+    path,
+    title: text(fields.title) || itemTitle(path),
+    date: dateText(date),
+    status: fields.status,
+    rolloverCount: countValue(fields["rollover-count"]),
+    legacy: true,
+  };
+}
+/** 校验新建名称与单日日期，不再创建复杂排期 */
+export function validateDraft(draft: ItemDraft): void {
+  if (!draft.title.trim()) throw new Error("请输入重要事项名称");
+  dateText(draft.date);
+  if (draft.status && draft.status !== "open" && draft.status !== "completed")
+    throw new Error("事项状态无效");
+}
+/** 构造仅包含四个专属字段的创建属性 */
+export function draftFields(
+  draft: ItemDraft,
+  count = 0,
+): Record<string, unknown> {
   validateDraft(draft);
   return {
-    title: draft.title.trim(),
-    "daylane-kind": draft.kind,
-    status: draft.status,
-    scheduled: draft.kind === "todo" ? draft.scheduled : undefined,
-    deadline: draft.kind === "todo" ? draft.deadline : undefined,
-    start: draft.kind === "event" ? draft.start : undefined,
-    end: draft.kind === "event" ? draft.end : undefined,
-    rollover: draft.kind === "todo" ? draft.rollover : "off",
-    project: draft.project.trim(),
-    color: COLORS.includes(draft.color as (typeof COLORS)[number])
-      ? draft.color
-      : "blue",
+    "daylane-type": "important-event",
+    "daylane-date": draft.date || undefined,
+    "daylane-status": draft.status ?? "open",
+    "daylane-rollover-count": countValue(count),
   };
 }
 /** 规范并校验事项管理目录，不允许遍历 Vault */

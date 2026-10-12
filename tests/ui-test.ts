@@ -1,91 +1,114 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { webcrypto } from "node:crypto";
-import { DEFAULTS, localDay } from "../src/domain";
+import { DEFAULTS } from "../src/domain";
 import { HolidayService } from "../src/holidays";
 import { TimerService } from "../src/timer";
 import { CalendarPanel, TimerPanel, UiHost } from "../src/ui";
-import { fixture } from "./helpers";
-
-/** 固定本地当天并提供真实浏览器摘要 */
+import { hostFixture } from "./ui-host";
+/** 本地日期固定，不让分批 I/O 的让步计时器挂起 */
 beforeEach(() => {
-  vi.stubGlobal("crypto", webcrypto);
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(2026, 9, 11, 10));
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 9, 12, 10));
 });
-/** 测试结束清理 DOM 与日期模拟 */
+/** 卸载测试模拟 */
 afterEach(() => {
-  document.body.replaceChildren();
   vi.useRealTimers();
-  vi.unstubAllGlobals();
+  document.body.replaceChildren();
 });
-/** 使用实际仓库与计时服务，宿主动作在边界模拟 */
-async function hostFixture(): Promise<UiHost> {
-  // 取得当前测试或业务边界，核对完整操作链
-  const { repository } = await fixture();
-  // 建立独立计时状态机，不依赖事项数据
-  const timer = new TimerService(() => Date.now(), vi.fn());
-  return {
-    repository,
-    timer,
-    holidays: new HolidayService(),
-    getPreferences: () => ({ ...DEFAULTS, lastBatch: [] }),
-    edit: vi.fn(),
-    open: vi.fn(async () => undefined),
-    trash: vi.fn(),
-    status: vi.fn(async () => undefined),
-    afterEdit: vi.fn(async () => undefined),
-    notify: vi.fn(),
-    prepareSound: vi.fn(),
-  };
-}
-/** 用户操作验证共享数据与独立视图状态 */
-describe("原生日历与番茄钟面板", () => {
-  it("显示中国放假与调休上班，点击事项通知编辑宿主", async () => {
-    // 模拟宿主动作边界，组件使用真实业务服务
-    const host = await hostFixture();
-    // 提供当前实例独立挂载容器，便于关闭后清理资源
-    const root = document.createElement("div");
-    document.body.append(root);
-    // 保存当前处理阶段的事实结果，供后续校验与展示
-    const panel = new CalendarPanel(root, host, { month: "2026-10" });
-    expect(
-      root.querySelector('[data-date="2026-10-01"]')?.textContent,
-    ).toContain("休");
-    expect(
-      root.querySelector('[data-date="2026-10-10"]')?.textContent,
-    ).toContain("班");
-    (
-      root.querySelector(
-        '[data-date="2026-10-09"] .daylane-chip',
-      ) as HTMLButtonElement
-    ).click();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(host.edit).toHaveBeenCalled();
-    panel.dispose();
-  });
-  it("跨周日程显示多个连续片段，但数据中只有一个事项", async () => {
+/** 参考样式的交互契约，不使用视觉快照模拟成功 */
+describe("红点月历和单日事项列表", () => {
+  it("格子只有红点和休班，不显示任务卡片；所有状态可见", async () => {
     // 模拟宿主动作边界，组件使用真实业务服务
     const host = await hostFixture();
     await host.repository.create({
-      title: "跨周联调",
-      kind: "event",
-      status: "open",
-      start: "2026-10-09",
-      end: "2026-10-14",
-      rollover: "off",
-      color: "green",
-      project: "",
+      title: "完成项",
+      date: "2026-10-12",
+      status: "completed",
     });
     // 提供当前实例独立挂载容器，便于关闭后清理资源
     const root = document.createElement("div");
     // 保存当前处理阶段的事实结果，供后续校验与展示
     const panel = new CalendarPanel(root, host, { month: "2026-10" });
-    expect(root.querySelectorAll(".daylane-span")).toHaveLength(2);
-    expect(host.repository.items()).toHaveLength(2);
+    expect(root.querySelectorAll(".daylane-day")).toHaveLength(42);
+    expect(
+      root.querySelector('[data-date="2026-10-10"]')?.textContent,
+    ).toContain("班");
+    expect(
+      root.querySelector('[data-date="2026-10-01"]')?.textContent,
+    ).toContain("休");
+    expect(
+      root.querySelector('[data-date="2026-10-12"] .daylane-dot'),
+    ).not.toBeNull();
+    expect(
+      root.querySelector('[data-date="2026-10-12"]')?.textContent,
+    ).not.toContain("完成项");
+    expect(root.querySelector(".daylane-items")?.textContent).toContain(
+      "完成项",
+    );
+    expect(root.querySelector(".daylane-item-title")?.textContent).toBe(
+      "完成项",
+    );
     panel.dispose();
   });
-  it("共享仓库刷新不改变各实例月份，卸载后不重新挂载", async () => {
+  it("单击选择、双击或添加调用名称弹窗，点击标题只打开文档", async () => {
+    // 模拟宿主动作边界，组件使用真实业务服务
+    const host = await hostFixture();
+    // 提供当前实例独立挂载容器，便于关闭后清理资源
+    const root = document.createElement("div");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const panel = new CalendarPanel(root, host, { month: "2026-10" });
+    (
+      root.querySelector('[data-date="2026-10-09"]') as HTMLButtonElement
+    ).click();
+    expect(root.querySelector(".daylane-items")?.textContent).toContain(
+      "整理接口文档",
+    );
+    (root.querySelector(".daylane-item-title") as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(host.open).toHaveBeenCalled();
+    root
+      .querySelector('[data-date="2026-10-15"]')!
+      .dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(host.create).toHaveBeenCalledWith("2026-10-15");
+    panel.dispose();
+  });
+  it("右键触发宿主面板，列表不添加常驻改期按钮", async () => {
+    // 模拟宿主动作边界，组件使用真实业务服务
+    const host = await hostFixture();
+    await host.repository.schedule(host.repository.items()[0], "2026-10-12");
+    // 提供当前实例独立挂载容器，便于关闭后清理资源
+    const root = document.createElement("div");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const panel = new CalendarPanel(root, host);
+    root
+      .querySelector(".daylane-item")!
+      .dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+      );
+    expect(host.context).toHaveBeenCalled();
+    expect(root.textContent).not.toContain("移到明天");
+    expect(
+      root.querySelector(".daylane-item")?.querySelectorAll("button"),
+    ).toHaveLength(2);
+    panel.dispose();
+  });
+  it("待办箱在同面板切换，完成项不被隐藏", async () => {
+    // 模拟宿主动作边界，组件使用真实业务服务
+    const host = await hostFixture();
+    await host.repository.create({ title: "暂缓事项", status: "completed" });
+    // 提供当前实例独立挂载容器，便于关闭后清理资源
+    const root = document.createElement("div");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const panel = new CalendarPanel(root, host);
+    (root.querySelector(".daylane-inbox-link") as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(root.querySelectorAll(".daylane-day")).toHaveLength(0);
+    expect(root.textContent).toContain("暂缓事项");
+    expect(root.textContent).toContain("返回日历");
+    panel.dispose();
+  });
+  it("多个实例月份独立且卸载后不会复活", async () => {
     // 模拟宿主动作边界，组件使用真实业务服务
     const host = await hostFixture();
     // 记录起始边界或首次请求状态，验证顺序与竞态
@@ -98,124 +121,60 @@ describe("原生日历与番茄钟面板", () => {
     const right = new CalendarPanel(second, host, { month: "2026-10" });
     await host.repository.status(host.repository.items()[0], "completed");
     expect(
-      (first.querySelector('input[type="month"]') as HTMLInputElement).value,
-    ).toBe("2026-09");
+      first.querySelector(".daylane-month-heading")?.textContent,
+    ).toContain("9月");
     expect(
-      (second.querySelector('input[type="month"]') as HTMLInputElement).value,
-    ).toBe("2026-10");
+      second.querySelector(".daylane-month-heading")?.textContent,
+    ).toContain("10月");
     left.dispose();
     host.repository.changes.emit();
     expect(first.childElementCount).toBe(0);
     right.dispose();
   });
-  it("展示模式不提供修改入口，也不会把标题当 HTML", async () => {
+  it("只读代码块禁用复选与删除，新输入不能注入 HTML", async () => {
     // 模拟宿主动作边界，组件使用真实业务服务
     const host = await hostFixture();
-    await host.repository.edit(host.repository.items()[0], {
-      ...host.repository.items()[0],
-      title: '<img src="x" onerror="alert(1)">',
+    await host.repository.create({
+      title: "<img onerror=x>",
+      date: "2026-10-12",
     });
     // 提供当前实例独立挂载容器，便于关闭后清理资源
     const root = document.createElement("div");
     // 保存当前处理阶段的事实结果，供后续校验与展示
-    const panel = new CalendarPanel(root, host, {
-      month: "2026-10",
-      interactive: false,
-    });
+    const panel = new CalendarPanel(root, host, { interactive: false });
     expect(root.querySelector("img")).toBeNull();
-    expect(root.textContent).not.toContain("＋ 新建事项");
-    expect(
-      [...root.querySelectorAll("button")].some(
-        (button) => button.textContent === "删除",
-      ),
-    ).toBe(false);
+    expect(root.querySelector(".daylane-delete")).toBeNull();
+    expect(root.querySelector(".daylane-add")).toBeNull();
     panel.dispose();
   });
-  it("日期双击只通知新建，不创建周期笔记", async () => {
+  it("自定义计时和休息默认值，关闭面板不停止计时", async () => {
     // 模拟宿主动作边界，组件使用真实业务服务
     const host = await hostFixture();
     // 提供当前实例独立挂载容器，便于关闭后清理资源
     const root = document.createElement("div");
-    // 保存当前处理阶段的事实结果，供后续校验与展示
-    const panel = new CalendarPanel(root, host, { month: "2026-10" });
-    root
-      .querySelector('[data-date="2026-10-15"]')!
-      .dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-    expect(host.edit).toHaveBeenCalledWith("2026-10-15");
-    expect(host.repository.items()).toHaveLength(1);
-    panel.dispose();
-  });
-  it("自定义番茄钟时长启动，两个面板共享状态且不操作事项", async () => {
-    // 模拟宿主动作边界，组件使用真实业务服务
-    const host = await hostFixture();
-    // 记录起始边界或首次请求状态，验证顺序与竞态
-    const first = document.createElement("div");
     // 创建第二个独立视图或请求，核对共享状态与资源清理
     const second = document.createElement("div");
-    // 挂载首个组件实例，验证状态独立与卸载行为
-    const left = new TimerPanel(first, host);
-    // 挂载另一个组件实例，验证共享数据仍然刷新
-    const right = new TimerPanel(second, host);
-    // 创建或读取可操作表单控件，保留尚未提交的输入
-    const input = first.querySelector(
-      'input[type="number"]',
-    ) as HTMLInputElement;
-    input.value = "42";
-    [...first.querySelectorAll("button")]
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const panel = new TimerPanel(root, host);
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const other = new TimerPanel(second, host);
+    (root.querySelector("input") as HTMLInputElement).value = "37";
+    [...root.querySelectorAll("button")]
       .find((button) => button.textContent === "开始")!
       .click();
     await Promise.resolve();
     await Promise.resolve();
     expect(host.timer.snapshot()).toMatchObject({
       status: "running",
-      minutes: 42,
+      minutes: 37,
     });
-    expect(second.querySelector(".daylane-timer-display")?.textContent).toBe(
-      "42:00",
-    );
-    left.dispose();
-    vi.advanceTimersByTime(60_000);
-    host.timer.tick();
-    expect(second.querySelector(".daylane-timer-display")?.textContent).toBe(
-      "41:00",
-    );
-    expect(host.repository.items()).toHaveLength(1);
-    right.dispose();
-  });
-  it("未知年度明确提示，不以普通周末假装正式假期", async () => {
-    // 模拟宿主动作边界，组件使用真实业务服务
-    const host = await hostFixture();
-    // 提供当前实例独立挂载容器，便于关闭后清理资源
-    const root = document.createElement("div");
-    // 保存当前处理阶段的事实结果，供后续校验与展示
-    const panel = new CalendarPanel(root, host, { month: "2030-01" });
-    expect(root.textContent).toContain("正式节假日安排未收录");
-    expect(root.querySelectorAll(".daylane-holiday")).toHaveLength(0);
     panel.dispose();
-  });
-  it("切换休息模式立即显示休息默认值，完成后下一轮使用最新默认值", async () => {
-    // 使用可更改偏好验证每轮覆盖与默认设置的边界
-    const host = await hostFixture();
-    // 保存当前处理阶段的事实结果，供后续校验与展示
-    const preferences = { ...DEFAULTS, lastBatch: [] };
-    host.getPreferences = () => preferences;
-    // 提供当前实例独立挂载容器，便于关闭后清理资源
-    const root = document.createElement("div");
-    // 保存当前处理阶段的事实结果，供后续校验与展示
-    const panel = new TimerPanel(root, host);
+    expect(host.timer.snapshot().status).toBe("running");
     // 确定本轮专注或休息模式，与事项业务保持独立
-    const mode = root.querySelector("select") as HTMLSelectElement;
-    // 校验本轮分钟数，允许临时覆盖而不更改默认设置
-    const minutes = root.querySelector("input") as HTMLInputElement;
+    const mode = second.querySelector("select")!;
     mode.value = "break";
     mode.dispatchEvent(new Event("change"));
-    expect(minutes.value).toBe("5");
-    host.timer.start();
-    preferences.breakMinutes = 9;
-    vi.advanceTimersByTime(300_000);
-    host.timer.tick();
-    expect(host.timer.snapshot().status).toBe("finished");
-    expect(minutes.value).toBe("9");
-    panel.dispose();
+    expect((second.querySelector("input") as HTMLInputElement).value).toBe("5");
+    other.dispose();
   });
 });

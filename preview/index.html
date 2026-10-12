@@ -3,91 +3,62 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Daylane · 中国节假日与重要事项日历</title>
+    <title>Daymark · 单日重要事项与待办箱</title>
     <link rel="stylesheet" href="styles.css" />
     <style>
       :root {
-        --background-primary: #fff;
-        --background-secondary: #f7f8fa;
-        --background-modifier-border: #dde1e8;
-        --background-modifier-hover: #edf2fa;
-        --interactive-accent: #416fb5;
-        --text-normal: #25334a;
-        --text-muted: #778294;
-        --text-on-accent: #fff;
-        --text-warning: #a96921;
-        --text-error: #b64242;
+        --background-primary: #171c1e;
+        --background-secondary: #202629;
+        --background-modifier-border: #343b41;
+        --background-modifier-hover: #272e34;
+        --text-normal: #d6d6d6;
+        --text-muted: #b5bdc8;
+        --text-error: #ff737f;
+        --interactive-accent: #4285df;
+        --font-interface: system-ui, sans-serif;
       }
       * {
         box-sizing: border-box;
       }
       body {
         margin: 0;
+        background: #171c1e;
+        color: var(--text-normal);
         font:
           14px system-ui,
           sans-serif;
-        color: var(--text-normal);
-        background: #f3f5f9;
-      }
-      header {
-        margin: 30px auto 20px;
-        max-width: 1380px;
-        padding: 0 20px;
-      }
-      header h1 {
-        font-size: 28px;
-        margin-bottom: 8px;
-      }
-      header p {
-        color: var(--text-muted);
       }
       main {
-        max-width: 1380px;
-        margin: auto;
-        padding: 0 20px 40px;
+        max-width: 704px;
+        margin: 0 auto;
       }
-      #calendar,
-      #timer {
-        background: white;
-        border-radius: 14px;
-        border: 1px solid #dde1e8;
-        margin-bottom: 20px;
+      #calendar {
+        width: 100%;
       }
       #timer {
-        max-width: 600px;
+        border-top: 1px solid var(--background-modifier-border);
+        margin-top: 22px;
       }
       input,
       select,
       button {
         font: inherit;
-        border: 1px solid #d8dce4;
+        border: 1px solid #444c56;
         border-radius: 5px;
-        padding: 5px 9px;
-        background: white;
+        padding: 6px 10px;
         color: inherit;
+        background: #22292e;
       }
       button {
         cursor: pointer;
       }
-      button:hover {
-        background: #eef2f8;
-      }
       button.mod-cta {
-        background: #416fb5;
-        color: white;
-      }
-      h2 {
-        font-size: 20px;
+        background: #4285df;
+        color: #fff;
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>Daylane <small>中国节假日与重要事项日历</small></h1>
-      <p>
-        真实日历组件的浏览器视觉验证页 · 仅使用内存演示数据，不修改任何 Vault。
-      </p>
-    </header>
     <main>
       <div id="calendar"></div>
       <div id="timer"></div>

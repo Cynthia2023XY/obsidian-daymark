@@ -1,10 +1,7 @@
 import {
-  addDays,
-  COLORS,
   Item,
   localDay,
   monthDays,
-  onDay,
   Preferences,
   shiftMonth,
   validDay,
@@ -13,61 +10,59 @@ import { HolidayService } from "./holidays";
 import { ItemRepository } from "./repository";
 import { TimerMode, TimerService, validMinutes } from "./timer";
 
-/** 页面动作由宿主实现，日历与番茄钟不直接依赖 Obsidian */
+/** 视图动作通过宿主公开 API 执行，日历无需依赖原插件 */
 export interface UiHost {
-  /** 共享事项仓库 */
+  /** 共享单日事项仓库 */
   repository: ItemRepository;
-  /** 共享正式节假日查询 */
+  /** 中国正式假期服务 */
   holidays: HolidayService;
-  /** 插件级独立计时器 */
+  /** 独立计时服务 */
   timer: TimerService;
-  /** 读取最新偏好 */
+  /** 当前配置 */
   getPreferences(): Preferences;
-  /** 打开新建或编辑表单 */
-  edit(date: string, item?: Item): void;
-  /** 打开事项 Markdown 笔记 */
+  /** 名称单输入框创建事项 */
+  create(date?: string): void;
+  /** 点击名称打开原文 */
   open(item: Item): Promise<void>;
-  /** 删除前展示确认 */
-  trash(item: Item): void;
-  /** 修改状态后检查需要流转的重新打开项 */
+  /** 删除或解除事项身份 */
+  remove(item: Item): void;
+  /** 只改变完成状态 */
   status(item: Item, status: Item["status"]): Promise<void>;
-  /** 保存表单后检查过期待办是否需要立即流转 */
-  afterEdit(): Promise<void>;
-  /** 对用户显示异常或完成提示 */
+  /** 右键菜单承载手动改期，避免列表按钮堆叠 */
+  context(item: Item, event: MouseEvent): void;
+  /** 打开配置中的旧数据迁移预览 */
+  migrate(): void;
+  /** 可见错误出口 */
   notify(message: string): void;
-  /** 由用户手势提前启用可选提示音 */
+  /** 用户手势初始化提示音 */
   prepareSound(): void;
 }
-/** 内嵌日历可覆盖的实例配置 */
+/** 代码块、侧栏和独立页签只有布局及交互差别 */
 export interface CalendarOptions {
-  /** 实例初始月份 */
+  /** 初始月，实例之间独立 */
   month?: string;
-  /** 指定项目过滤；空值显示全部 */
-  project?: string;
-  /** 展示中国假期与补班 */
-  showHolidays?: boolean;
-  /** 展示完成和取消事项 */
-  showCompleted?: boolean;
-  /** 是否允许修改事项 */
+  /** 是否允许写入 */
   interactive?: boolean;
-  /** 侧栏启用紧凑布局 */
+  /** 侧栏紧凑尺寸 */
   compact?: boolean;
+  /** 默认打开待办箱入口 */
+  inbox?: boolean;
 }
-/** 创建安全的文本 DOM，不将笔记内容当作 HTML */
+/** 安全文本 DOM 在所属窗口创建，不执行笔记内容 */
 export function element<K extends keyof HTMLElementTagNameMap>(
   parent: HTMLElement,
   tag: K,
   className = "",
   content = "",
 ): HTMLElementTagNameMap[K] {
-  // 使用容器所属文档，兼容 Obsidian 弹出窗口
+  // 通过安全文本方式创建界面节点，避免执行笔记内容
   const node = parent.ownerDocument.createElement(tag);
   node.className = className;
   node.textContent = content;
   parent.append(node);
   return node;
 }
-/** 按钮与异常出口统一，避免未处理 Promise */
+/** 按钮所有异步错误都返回用户可见提示 */
 export function button(
   parent: HTMLElement,
   title: string,
@@ -75,7 +70,7 @@ export function button(
   report: (message: string) => void,
   className = "",
 ): HTMLButtonElement {
-  // 所有写操作异常回到用户可见提示
+  // 通过安全文本方式创建界面节点，避免执行笔记内容
   const node = element(parent, "button", className, title);
   node.type = "button";
   node.addEventListener("click", (event) => {
@@ -88,433 +83,320 @@ export function button(
   });
   return node;
 }
-/** 日期与颜色安全处理后的日历事项标记 */
-function itemClass(item: Item): string {
-  return `daylane-chip daylane-color-${COLORS.includes(item.color as (typeof COLORS)[number]) ? item.color : "blue"}${item.status === "open" ? "" : " is-completed"}`;
-}
-/** 六周月历与当天事项列表，实例选择状态彼此独立 */
+/** 参考图的红点月历与下方简洁复选事项列表 */
 export class CalendarPanel {
-  /** 当前实例月份 */
+  /** 实例展示月份 */
   private month: string;
-  /** 当前实例选中的日期 */
+  /** 选中日期，不改变其他日历实例 */
   private selected = localDay();
-  /** 当前项目筛选 */
-  private project: string;
-  /** 当前状态过滤 */
-  private status = "all";
-  /** 投屏时关闭修改操作 */
-  private interactive: boolean;
-  /** 事项变化订阅的卸载函数 */
+  /** 日历与待办箱切换，不额外打开设置弹窗 */
+  private inboxPage: boolean;
+  /** 事项订阅卸载函数 */
   private unsubscribe: () => void;
-  /** 当天详情区域，选择日期时单独刷新 */
+  /** 下方列表区域 */
   private detail: HTMLElement | null = null;
-  /** 挂载独立实例并共享事项事实 */
+  /** 挂载共用样式与数据 */
   constructor(
     private root: HTMLElement,
     private host: UiHost,
     private options: CalendarOptions = {},
   ) {
     this.month = options.month ?? localDay().slice(0, 7);
-    this.project = options.project ?? "";
-    this.interactive = options.interactive ?? true;
+    this.inboxPage = Boolean(options.inbox);
     this.unsubscribe = host.repository.changes.subscribe(() => this.render());
     this.render();
   }
-  /** 从统一仓库获得该实例可展示的事项 */
-  private visibleItems(): Item[] {
-    return this.host.repository
-      .items()
-      .filter(
-        (item) =>
-          (!this.project || item.project === this.project) &&
-          ((this.options.showCompleted ??
-            this.host.getPreferences().showCompleted) ||
-            item.status === "open") &&
-          (this.status === "all" || item.status === this.status),
-      );
-  }
-  /** 构建月份导航、假期标记与事项格子 */
+  /** 保留日期格、红点和休班角标，不展示排期卡片 */
   render(): void {
     this.root.replaceChildren();
-    this.root.className = `daylane-root${this.options.compact ? " daylane-compact" : ""}`;
-    // 每个视图共享偏好但不共享月份与选中日期
-    const settings = this.host.getPreferences();
-    // 组织月份导航与筛选入口，避免日期格内堆叠操作
-    const toolbar = element(this.root, "div", "daylane-toolbar");
-    button(
-      toolbar,
-      "‹ 上月",
+    this.root.className =
+      "daylane-root" + (this.options.compact ? " daylane-compact" : "");
+    if (this.host.repository.progress.active) {
+      element(
+        this.root,
+        "p",
+        "daylane-muted",
+        "扫描事项 " +
+          this.host.repository.progress.completed +
+          "/" +
+          this.host.repository.progress.total,
+      );
+    }
+    // 逐项处理当前业务集合，保留每项自己的状态与结果
+    for (const [path, issue] of this.host.repository.issues)
+      element(this.root, "p", "daylane-warning", path + "：" + issue);
+    if (
+      this.host.repository.items().some((item) => item.legacy) ||
+      [...this.host.repository.issues.values()].some((message) =>
+        message.includes("旧"),
+      )
+    ) {
+      // 保存当前处理阶段的事实结果，供后续校验与展示
+      const banner = element(this.root, "div", "daylane-legacy-notice");
+      element(banner, "span", "", "旧事项兼容展示，确认迁移前不会自动流转。");
+      if (this.options.interactive !== false)
+        button(banner, "预览迁移", () => this.host.migrate(), this.host.notify);
+    }
+    if (this.inboxPage) {
+      button(
+        this.root,
+        "‹ 返回日历",
+        () => {
+          this.inboxPage = false;
+          this.render();
+        },
+        this.host.notify,
+        "daylane-text-button",
+      );
+      this.detail = element(this.root, "section", "daylane-detail");
+      this.renderList(this.detail, "待办箱", this.host.repository.inbox());
+      if (this.options.interactive !== false)
+        button(
+          this.detail,
+          "＋ 添加重要事项",
+          () => this.host.create(),
+          this.host.notify,
+          "daylane-add",
+        );
+      return;
+    }
+    // 在日期格中区分日期选择与正式假期标记
+    const header = element(this.root, "header", "daylane-nav");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const heading = button(
+      header,
+      "",
+      () => {
+        picker.hidden = !picker.hidden;
+        if (!picker.hidden) picker.focus();
+      },
+      this.host.notify,
+      "daylane-month-heading",
+    );
+    element(heading, "span", "", Number(this.month.slice(5)) + "月");
+    element(heading, "span", "daylane-year", this.month.slice(0, 4));
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const navigation = element(header, "div", "daylane-navigation");
+    // 保存修改前的事实快照，失败时恢复或验证变化边界
+    const previous = button(
+      navigation,
+      "",
       () => {
         this.month = shiftMonth(this.month, -1);
         this.render();
       },
       this.host.notify,
+      "daylane-nav-arrow",
     );
-    // 提供明确月份选择，不自动改写笔记内配置
-    const monthInput = element(toolbar, "input");
-    monthInput.type = "month";
-    monthInput.value = this.month;
-    monthInput.setAttribute("aria-label", "查看月份");
-    monthInput.addEventListener("change", () => {
-      if (validDay(`${monthInput.value}-01`)) {
-        this.month = monthInput.value;
-        this.render();
-      }
-    });
+    previous.setAttribute("aria-label", "上个月");
+    element(previous, "span", "daylane-chevron left");
     button(
-      toolbar,
-      "下月 ›",
+      navigation,
+      "今天",
+      () => {
+        this.selected = localDay();
+        this.month = this.selected.slice(0, 7);
+        this.render();
+      },
+      this.host.notify,
+      "daylane-today-button",
+    );
+    // 计算后续日期或新路径，不沿用已失效的状态
+    const next = button(
+      navigation,
+      "",
       () => {
         this.month = shiftMonth(this.month, 1);
         this.render();
       },
       this.host.notify,
+      "daylane-nav-arrow",
     );
-    button(
-      toolbar,
-      "今天",
-      () => {
-        this.month = localDay().slice(0, 7);
-        this.selected = localDay();
+    next.setAttribute("aria-label", "下个月");
+    element(next, "span", "daylane-chevron right");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const picker = element(this.root, "input", "daylane-month-picker");
+    picker.type = "month";
+    picker.value = this.month;
+    picker.hidden = true;
+    picker.setAttribute("aria-label", "选择月份");
+    picker.addEventListener("change", () => {
+      if (validDay(picker.value + "-01")) {
+        this.month = picker.value;
         this.render();
-      },
-      this.host.notify,
-    );
-    // 项目和状态筛选属于当前视图，不写进笔记
-    const projects = element(toolbar, "select");
-    projects.setAttribute("aria-label", "项目筛选");
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const project of new Set([
-      "",
-      ...this.host.repository
-        .items()
-        .map((item) => item.project)
-        .filter(Boolean),
-      this.project,
-    ])) {
-      // 为受控输入添加合法选项，不猜测用户配置
-      const option = element(projects, "option", "", project || "全部项目");
-      option.value = project;
-    }
-    projects.value = this.project;
-    projects.addEventListener("change", () => {
-      this.project = projects.value;
-      this.render();
+      }
     });
-    // 提供事项状态筛选，区分未完成、完成与取消
-    const states = element(toolbar, "select");
-    states.setAttribute("aria-label", "状态筛选");
+    // 展示每周日期顺序，与用户周起始偏好一致
+    const weekdays = element(this.root, "div", "daylane-weekdays");
     // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const [value, label] of [
-      ["all", "全部状态"],
-      ["open", "未完成"],
-      ["completed", "已完成"],
-      ["cancelled", "已取消"],
-    ]) {
-      // 为受控输入添加合法选项，不猜测用户配置
-      const option = element(states, "option", "", label);
-      option.value = value;
+    for (const label of [
+      "周一",
+      "周二",
+      "周三",
+      "周四",
+      "周五",
+      "周六",
+      "周日",
+    ])
+      element(weekdays, "span", "", label);
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const grid = element(this.root, "div", "daylane-grid");
+    // 读取统一事项集合，供当前视图筛选与分组展示
+    const items = this.host.repository.items();
+    // 逐项处理当前业务集合，保留每项自己的状态与结果
+    for (const date of monthDays(this.month, true)) {
+      // 读取正式放假或调休标记，优先于普通星期规则
+      const holiday = this.host.holidays.get(date);
+      // 承载日期标记、假期信息与当天事项
+      const day = element(grid, "button", "daylane-day");
+      day.type = "button";
+      day.dataset.date = date;
+      day.setAttribute("aria-label", "选择 " + date);
+      day.setAttribute("aria-pressed", String(date === this.selected));
+      day.classList.toggle("is-outside", date.slice(0, 7) !== this.month);
+      day.classList.toggle("is-today", date === localDay());
+      day.classList.toggle("is-selected", date === this.selected);
+      if (holiday) {
+        day.classList.add(
+          holiday.type === "holiday" ? "is-holiday" : "is-workday",
+        );
+        day.title = holiday.name;
+      }
+      element(day, "span", "daylane-day-number", String(Number(date.slice(8))));
+      if (holiday)
+        element(
+          day,
+          "span",
+          "daylane-holiday " + holiday.type,
+          holiday.type === "holiday" ? "休" : "班",
+        );
+      if (items.some((item) => item.date === date))
+        element(day, "span", "daylane-dot");
+      day.addEventListener("click", () => this.select(date));
+      day.addEventListener("dblclick", () => {
+        if (this.options.interactive !== false) this.host.create(date);
+      });
     }
-    states.value = this.status;
-    states.addEventListener("change", () => {
-      this.status = states.value;
-      this.render();
-    });
-    if (this.options.interactive !== false)
-      button(
-        toolbar,
-        this.interactive ? "展示模式" : "退出展示",
-        () => {
-          this.interactive = !this.interactive;
-          this.render();
-        },
-        this.host.notify,
-      );
-    if (this.interactive)
-      button(
-        toolbar,
-        "＋ 新建事项",
-        () => this.host.edit(this.selected),
-        this.host.notify,
-        "mod-cta",
-      );
-    if (!this.host.holidays.covered(`${this.month}-01`))
+    if (!this.host.holidays.covered(this.month + "-01"))
       element(
         this.root,
         "p",
         "daylane-warning",
-        `${this.month.slice(0, 4)} 年正式节假日安排未收录，工作日自动流转将暂缓。`,
+        this.month.slice(0, 4) + " 年正式节假日安排未收录",
       );
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const message of [...this.host.repository.issues]
-      .map(([path, message]) => `${path}：${message}`)
-      .concat(this.host.repository.conflicts()))
-      element(this.root, "p", "daylane-warning", message);
-    // 安排日历和详情区域，随容器宽度切换布局
-    const layout = element(this.root, "div", "daylane-layout");
-    // 承载月历日期与跨周事项片段
-    const calendar = element(layout, "div", "daylane-month");
-    // 展示每周日期顺序，与用户周起始偏好一致
-    const weekdays = element(calendar, "div", "daylane-weekdays");
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const label of settings.mondayFirst
-      ? ["一", "二", "三", "四", "五", "六", "日"]
-      : ["日", "一", "二", "三", "四", "五", "六"])
-      element(weekdays, "div", "", label);
-    // 构造当前月的完整周范围，覆盖相邻月份边界
-    const days = monthDays(this.month, settings.mondayFirst);
-    // 读取统一事项集合，供当前视图筛选与分组展示
-    const items = this.visibleItems();
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (let index = 0; index < days.length; index += 7)
-      this.renderWeek(calendar, days.slice(index, index + 7), items);
-    this.detail = element(layout, "aside", "daylane-detail");
+    this.detail = element(this.root, "section", "daylane-detail");
     this.renderDetail();
   }
-  /** 同一周的日期格与跨日条带共同使用七列布局 */
-  private renderWeek(
-    calendar: HTMLElement,
-    days: string[],
-    items: Item[],
-  ): void {
-    // 日期格展示单日事项，跨日事项通过独立连续条带展示
-    const week = element(calendar, "div", "daylane-week");
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const date of days) {
-      // 承载日期标记、假期信息与当天事项
-      const day = element(
-        week,
-        "div",
-        `daylane-day${date.slice(0, 7) !== this.month ? " is-outside" : ""}${date === localDay() ? " is-today" : ""}${date === this.selected ? " is-selected" : ""}`,
-      );
-      day.dataset.date = date;
-      // 在日期格中区分日期选择与正式假期标记
-      const header = element(day, "div", "daylane-day-heading");
-      // 为日期提供可聚焦选择入口
-      const dateButton = button(
-        header,
-        String(Number(date.slice(8))),
-        () => this.select(date),
-        this.host.notify,
-        "daylane-date-button",
-      );
-      dateButton.setAttribute("aria-label", `选择 ${date}`);
-      // 读取正式放假或调休标记，优先于普通星期规则
-      const holiday = this.host.holidays.get(date);
-      if (
-        holiday &&
-        (this.options.showHolidays ?? this.host.getPreferences().showHolidays)
-      ) {
-        // 明确展示休假与补班，避免把周末当作法定假期
-        const badge = element(
-          header,
-          "span",
-          `daylane-holiday ${holiday.type}`,
-          holiday.type === "holiday" ? "休" : "班",
-        );
-        badge.title = holiday.name;
-        element(day, "div", "daylane-holiday-name", holiday.name);
-      } else if ([0, 6].includes(new Date(`${date}T12:00:00`).getDay()))
-        day.classList.add("is-weekend");
-      day.addEventListener("click", () => this.select(date));
-      day.addEventListener("dblclick", (event) => {
-        if (
-          this.interactive &&
-          !(event.target as HTMLElement).closest(".daylane-chip")
-        )
-          this.host.edit(date);
-      });
-      // 筛选单日事项，跨日事项由独立条带展示
-      const daily = items.filter(
-        (item) =>
-          onDay(item, date) &&
-          (item.kind === "todo" || item.start === item.end),
-      );
-      // 逐项处理当前业务集合，保留每项自己的状态与结果
-      for (const item of daily.slice(0, this.options.compact ? 1 : 3)) {
-        // 渲染安全可点击的事项标题，并保存对应业务对象
-        const chip = button(
-          day,
-          `${item.status === "completed" ? "✓ " : item.status === "cancelled" ? "× " : ""}${item.title}`,
-          () => {
-            this.select(date);
-            if (this.interactive) this.host.edit(date, item);
-          },
-          this.host.notify,
-          itemClass(item),
-        );
-        chip.title = `${item.title}${item.deadline && item.deadline < localDay() && item.status === "open" ? " · 已逾期" : ""}`;
-      }
-      if (daily.length > (this.options.compact ? 1 : 3))
-        button(
-          day,
-          `还有 ${daily.length - (this.options.compact ? 1 : 3)} 项`,
-          () => this.select(date),
-          this.host.notify,
-          "daylane-more",
-        );
-    }
-    // 按区间分配最早可用行，跨周片段仍引用同一个事项
-    const lanes: number[][] = [];
-    // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const item of items
-      .filter(
-        (item) =>
-          item.kind === "event" &&
-          item.start !== item.end &&
-          item.start! <= days[6] &&
-          item.end! >= days[0],
-      )
-      .sort((a, b) => a.start!.localeCompare(b.start!))) {
-      // 记录有效开始日期或周内起点，决定排期范围
-      const start = days.findIndex((date) => date >= item.start!);
-      // 记录包含当天的结束日期或周内终点
-      const end = days.filter((date) => date <= item.end!).length;
-      // 定位最早可用展示行，跨周片段仍引用同一事项
-      let lane = lanes.findIndex((occupied) =>
-        occupied.every((column) => column < start || column >= end),
-      );
-      if (lane < 0) {
-        lane = lanes.length;
-        lanes.push([]);
-      }
-      // 逐项处理当前业务集合，保留每项自己的状态与结果
-      for (let column = start; column < end; column++) lanes[lane].push(column);
-      // 渲染安全可点击的事项标题，并保存对应业务对象
-      const chip = button(
-        week,
-        `${item.start! < days[0] ? "← " : ""}${item.title}${item.end! > days[6] ? " →" : ""}`,
-        () => {
-          this.select(days[start]);
-          if (this.interactive) this.host.edit(days[start], item);
-        },
-        this.host.notify,
-        `${itemClass(item)} daylane-span`,
-      );
-      chip.style.setProperty("--daylane-start", String(start + 1));
-      chip.style.setProperty("--daylane-end", String(end + 1));
-      chip.style.setProperty("--daylane-row", String(lane + 2));
-      chip.title = `${item.title} · ${item.start} — ${item.end}`;
-    }
-  }
-  /** 日期选择只更新详情，不破坏双击事件目标 */
+  /** 单击不重建日期按钮，让双击仍可触发同一目标 */
   private select(date: string): void {
     this.selected = date;
     // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const cell of this.root.querySelectorAll<HTMLElement>(".daylane-day"))
+    for (const cell of this.root.querySelectorAll<HTMLElement>(
+      ".daylane-day",
+    )) {
       cell.classList.toggle("is-selected", cell.dataset.date === date);
+      cell.setAttribute("aria-pressed", String(cell.dataset.date === date));
+    }
     this.renderDetail();
   }
-  /** 展示选中日期、今天待办和遗留待办 */
+  /** 选中日期列表与底部待办箱入口 */
   private renderDetail(): void {
     if (!this.detail) return;
     this.detail.replaceChildren();
-    // 读取统一事项集合，供当前视图筛选与分组展示
-    const items = this.visibleItems();
+    // 按本地自然日计算排期，避开 UTC 解析偏移
+    const date = new Date(this.selected + "T12:00:00");
     this.renderList(
       this.detail,
-      `${this.selected} 的事项`,
-      items.filter((item) => onDay(item, this.selected)),
+      date.getFullYear() +
+        " 年 " +
+        (date.getMonth() + 1) +
+        " 月 " +
+        date.getDate() +
+        " 日",
+      this.host.repository
+        .items()
+        .filter((item) => item.date === this.selected),
     );
-    if (this.selected !== localDay())
-      this.renderList(
+    if (this.options.interactive !== false)
+      button(
         this.detail,
-        "今天待办",
-        items.filter(
-          (item) =>
-            item.kind === "todo" &&
-            item.status === "open" &&
-            item.scheduled === localDay(),
-        ),
+        "＋ 添加重要事项",
+        () => this.host.create(this.selected),
+        this.host.notify,
+        "daylane-add",
       );
-    this.renderList(
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const inbox = this.host.repository
+      .inbox()
+      .filter((item) => item.status === "open").length;
+    button(
       this.detail,
-      "此前未完成",
-      items.filter(
-        (item) =>
-          item.kind === "todo" &&
-          item.status === "open" &&
-          item.scheduled! < localDay(),
-      ),
+      "查看待办箱（" + inbox + "）",
+      () => {
+        this.inboxPage = true;
+        this.render();
+      },
+      this.host.notify,
+      "daylane-inbox-link",
     );
   }
-  /** 详情操作不要求在日期格中塞入多个按钮 */
+  /** 每行只有复选框、标题与删除，手动流转放右键 */
   private renderList(parent: HTMLElement, title: string, items: Item[]): void {
-    // 分组展示选中日期、今天与此前未完成事项
-    const section = element(parent, "section", "daylane-list");
-    element(section, "h3", "", `${title}（${items.length}）`);
-    if (!items.length) element(section, "p", "daylane-muted", "暂无事项");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const heading = element(parent, "header", "daylane-list-header");
+    element(heading, "h3", "", title);
+    element(heading, "span", "", items.length + " 项重要事项");
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const list = element(parent, "ul", "daylane-items");
     // 逐项处理当前业务集合，保留每项自己的状态与结果
     for (const item of items) {
       // 呈现单条事项详情与明确操作入口
-      const row = element(section, "div", "daylane-item");
-      element(
+      const row = element(
+        list,
+        "li",
+        "daylane-item" + (item.status === "completed" ? " is-completed" : ""),
+      );
+      // 保存当前处理阶段的事实结果，供后续校验与展示
+      const check = element(row, "input", "daylane-checkbox");
+      check.type = "checkbox";
+      check.checked = item.status === "completed";
+      check.disabled = this.options.interactive === false || item.legacy;
+      check.setAttribute("aria-label", "完成 " + item.title);
+      check.addEventListener("change", () => {
+        check.disabled = true;
+        this.host
+          .status(item, check.checked ? "completed" : "open")
+          .catch((error) => {
+            check.checked = item.status === "completed";
+            this.host.notify(String(error));
+          })
+          .finally(() => {
+            check.disabled = this.options.interactive === false || item.legacy;
+          });
+      });
+      button(
         row,
-        "strong",
-        item.status === "open" ? "" : "is-completed",
         item.title,
-      );
-      element(
-        row,
-        "div",
-        "daylane-muted",
-        `${item.kind === "todo" ? `待办 · ${item.scheduled}` : `${item.start} — ${item.end}`}${item.project ? ` · ${item.project}` : ""}`,
-      );
-      if (item.deadline)
-        element(
-          row,
-          "div",
-          item.deadline < localDay() && item.status === "open"
-            ? "daylane-warning"
-            : "daylane-muted",
-          `截止 ${item.deadline}${item.deadline < localDay() && item.status === "open" ? " · 已逾期" : ""}`,
-        );
-      if (item.rolloverCount)
-        element(
-          row,
-          "div",
-          "daylane-muted",
-          `原计划 ${item.originalScheduled ?? "未知"} · 已流转 ${item.rolloverCount} 次`,
-        );
-      // 组织用户显式操作，展示模式可整体隐藏
-      const actions = element(row, "div", "daylane-actions");
-      button(actions, "打开笔记", () => this.host.open(item), this.host.notify);
-      if (!this.interactive) continue;
-      button(
-        actions,
-        "编辑",
-        () => this.host.edit(this.selected, item),
+        () => this.host.open(item),
         this.host.notify,
+        "daylane-item-title",
       );
-      button(
-        actions,
-        item.status === "open" ? "完成" : "重新打开",
-        () =>
-          this.host.status(item, item.status === "open" ? "completed" : "open"),
-        this.host.notify,
-      );
-      if (item.status === "open")
+      if (this.options.interactive !== false && !item.legacy) {
         button(
-          actions,
-          "取消",
-          () => this.host.status(item, "cancelled"),
+          row,
+          "×",
+          () => this.host.remove(item),
           this.host.notify,
-        );
-      if (item.kind === "todo")
-        button(
-          actions,
-          "移到明天",
-          () =>
-            this.host.repository.edit(item, {
-              ...item,
-              scheduled: addDays(localDay(), 1),
-            }),
-          this.host.notify,
-        );
-      button(actions, "删除", () => this.host.trash(item), this.host.notify);
+          "daylane-delete",
+        ).setAttribute("aria-label", "删除 " + item.title);
+        row.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          this.host.context(item, event);
+        });
+      }
     }
   }
-  /** 宿主关闭时取消共享仓库订阅 */
+  /** 卸载不会清空共享仓库，只取消当前订阅 */
   dispose(): void {
     this.unsubscribe();
     this.root.replaceChildren();

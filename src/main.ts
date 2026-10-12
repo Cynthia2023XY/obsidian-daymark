@@ -1,15 +1,16 @@
 import {
   ItemView,
   MarkdownRenderChild,
+  Menu,
   Notice,
   Plugin,
   PluginSettingTab,
-  Setting,
   TFile,
   WorkspaceLeaf,
 } from "obsidian";
 import { calendarOptions } from "./codeblock";
 import {
+  addDays,
   DEFAULTS,
   Item,
   localDay,
@@ -18,76 +19,105 @@ import {
   safeFolder,
 } from "./domain";
 import { HolidayService } from "./holidays";
-import { ConfirmModal, ImportModal, ItemModal } from "./modals";
+import { DateModal, ImportModal, ItemModal } from "./modals";
 import { ObsidianVault } from "./obsidian-adapter";
 import { ItemRepository } from "./repository";
 import { BatchResult, RolloverService } from "./rollover";
 import { TimerService, validMinutes } from "./timer";
 import {
+  button,
   CalendarOptions,
   CalendarPanel,
   element,
-  timerLabel,
   TimerPanel,
+  timerLabel,
   UiHost,
 } from "./ui";
 
-/** 大屏与侧栏日历的公开视图标识 */
+/** 沿用插件身份，升级不改变日历视图类型 */
 const CALENDAR_VIEW = "daylane-calendar";
-/** 独立番茄钟视图标识 */
+/** 番茄钟保持独立视图 */
 const TIMER_VIEW = "daylane-timer";
-/** 插件运行时只保留一套事实服务 */
-export default class DaylanePlugin extends Plugin implements UiHost {
-  /** 最新持久化偏好 */
-  private preferences: Preferences = { ...DEFAULTS, lastBatch: [] };
-  /** 所有日历共享的事项仓库 */
+/** 单日重要事项与独立番茄钟的公开宿主 */
+export default class DaymarkPlugin extends Plugin implements UiHost {
+  /** 精简设置，不持久化被移除的旧开关 */
+  private preferences: Preferences = { ...DEFAULTS };
+  /** 共享 Markdown 事实索引 */
   repository!: ItemRepository;
-  /** 内置中国正式假期与调休安排 */
+  /** 离线正式节假日数据 */
   holidays = new HolidayService();
-  /** 所有计时面板共享的番茄钟 */
+  /** 插件级共享独立计时 */
   timer!: TimerService;
-  /** 插件级自动流转执行器 */
+  /** 累计真实改期次数的自动执行器 */
   rollover!: RolloverService;
-  /** 当前状态栏展示节点 */
-  private statusEl: HTMLElement | null = null;
-  /** 用户手势初始化的提示音上下文 */
-  private audio: AudioContext | null = null;
-  /** 偏好保存串行链，防止较早写入覆盖最近批次 */
+  /** 最新偏好写入顺序 */
   private saving: Promise<void> = Promise.resolve();
-  /** 午夜调度资源 */
+  /** 到时提示音在用户手势内初始化 */
+  private audio: AudioContext | null = null;
+  /** 桌面计时入口 */
+  private statusEl: HTMLElement | null = null;
+  /** 本地午夜调度 */
   private midnight: number | null = null;
-  /** 已知本地日期，用于补偿唤醒和定时延迟 */
+  /** 记录前次本地日期，补偿睡眠回调 */
   private day = localDay();
-  /** 插件卸载后禁止迟到回调继续调度 */
+  /** 卸载后不再调度 */
   private stopped = false;
-  /** 初始化独立插件，不修改其他插件配置 */
+  /** 相同暂缓错误不在每次聚焦重复打扰 */
+  private lastError = "";
+  /** 初始化公开 API 与范围，先监听再扫描 */
   async onload(): Promise<void> {
-    // 配置结构迁移仅限插件自己的数据
-    const loaded = (await this.loadData()) as Partial<Preferences> | null;
-    this.preferences = {
-      ...DEFAULTS,
-      ...loaded,
-      lastBatch: Array.isArray(loaded?.lastBatch) ? loaded.lastBatch : [],
-    };
+    // 读取持久化偏好并与安全默认值合并
+    const loaded = (await this.loadData()) as
+      | (Partial<Preferences> & { settingsVersion?: number })
+      | null;
+    this.preferences = { ...DEFAULTS };
+    if (loaded?.settingsVersion === 2) {
+      // 逐项处理当前业务集合，保留每项自己的状态与结果
+      for (const key of Object.keys(DEFAULTS) as (keyof Preferences)[])
+        if (loaded[key] !== undefined)
+          (this.preferences as unknown as Record<string, unknown>)[key] =
+            loaded[key];
+    } else if (loaded) {
+      // 逐项处理当前业务集合，保留每项自己的状态与结果
+      for (const key of [
+        "folder",
+        "timerEnabled",
+        "focusMinutes",
+        "breakMinutes",
+      ] as const)
+        if (loaded[key] !== undefined)
+          (this.preferences as unknown as Record<string, unknown>)[key] =
+            loaded[key];
+    }
     try {
       this.preferences.folder = safeFolder(this.preferences.folder);
     } catch {
       this.preferences.folder = DEFAULTS.folder;
-      this.notify("事项目录配置无效，已回到 Daylane/Items");
+      this.notify("事项目录无效，已恢复默认目录");
     }
     // 逐项处理当前业务集合，保留每项自己的状态与结果
     for (const key of ["focusMinutes", "breakMinutes"] as const)
       if (!validMinutes(this.preferences[key]))
         this.preferences[key] = DEFAULTS[key];
+    if (
+      !Number.isInteger(this.preferences.maxRollovers) ||
+      this.preferences.maxRollovers < 1
+    )
+      this.preferences.maxRollovers = 5;
+    if (
+      this.preferences.rolloverMode !== "calendar" &&
+      this.preferences.rolloverMode !== "workday"
+    )
+      this.preferences.rolloverMode = "workday";
     this.repository = new ItemRepository(
-      new ObsidianVault(this.app),
+      new ObsidianVault(this.app, this.manifest.dir),
       this.preferences.folder,
+      this.preferences.limitToFolder,
     );
     this.rollover = new RolloverService(
       this.repository,
       this.holidays,
       () => this.preferences,
-      () => this.save(),
     );
     this.timer = new TimerService(
       () => Date.now(),
@@ -101,7 +131,7 @@ export default class DaylanePlugin extends Plugin implements UiHost {
       },
     );
     this.timer.select("focus", this.preferences.focusMinutes);
-    // 先订阅文件事件再扫描，冷启动不依赖元数据缓存已就绪
+    // 在缓存就绪前订阅文件变化，避免冷启动漏索引
     const fileChanged = (file: import("obsidian").TAbstractFile): void => {
       if (file instanceof TFile) void this.repository.refresh(file.path);
     };
@@ -112,9 +142,8 @@ export default class DaylanePlugin extends Plugin implements UiHost {
     );
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
-        this.repository.remove(oldPath);
         void this.repository
-          .scan()
+          .renamed(file.path, oldPath)
           .catch((error) => this.notify(String(error)));
       }),
     );
@@ -124,25 +153,30 @@ export default class DaylanePlugin extends Plugin implements UiHost {
       "daylane",
       (source, container, context) => {
         try {
-          // 读取文件或配置属性，不把元数据缓存当作唯一事实
-          const fields = this.repository.port.parseYaml(source);
-          // 保存当前日历实例的配置，不改动其他实例状态
-          const options = calendarOptions(fields);
-          context.addChild(new EmbeddedCalendar(container, this, options));
+          context.addChild(
+            new EmbeddedCalendar(
+              container,
+              this,
+              calendarOptions(this.repository.port.parseYaml(source)),
+            ),
+          );
         } catch (error) {
           element(
             container,
             "p",
             "daylane-warning",
-            `Daylane 配置错误：${error instanceof Error ? error.message : error}`,
+            "Daymark 配置错误：" + String(error),
           );
         }
       },
     );
-    this.addRibbonIcon("calendar-days", "打开 Daylane 日历", () => {
-      void this.openCalendar().catch((error) => this.notify(String(error)));
+    this.addRibbonIcon("calendar-days", "打开侧栏日历", () => {
+      void this.openCalendar(true).catch((error) => this.notify(String(error)));
     });
-    this.addSettingTab(new DaylaneSettings(this));
+    this.addRibbonIcon("timer", "打开独立番茄钟", () => {
+      void this.openTimer().catch((error) => this.notify(String(error)));
+    });
+    this.addSettingTab(new DaymarkSettings(this));
     this.commands();
     this.statusEl = this.addStatusBarItem();
     this.statusEl.classList.add("daylane-status");
@@ -156,6 +190,7 @@ export default class DaylanePlugin extends Plugin implements UiHost {
         if (this.day !== localDay()) {
           this.day = localDay();
           void this.checkRollover();
+          this.repository.changes.emit();
           this.scheduleMidnight();
         }
       }, 1000),
@@ -174,85 +209,153 @@ export default class DaylanePlugin extends Plugin implements UiHost {
     this.updateStatus();
     this.scheduleMidnight();
     this.app.workspace.onLayoutReady(() => {
-      if (!this.stopped) void this.checkRollover();
+      if (this.stopped) return;
+      void this.openCalendar(true, false).catch((error) =>
+        this.notify(String(error)),
+      );
+      void this.checkRollover();
     });
   }
-  /** 所有入口读取同一份最新设置 */
+  /** 各入口读取最新偏好 */
   getPreferences(): Preferences {
     return this.preferences;
   }
-  /** 顺序保存快照，出现写入失败时向调用方返回异常 */
+  /** 只写新设置，避免旧无效字段继续累积 */
   async save(): Promise<void> {
-    // 在请求时取快照，写入完成顺序与业务修改顺序一致
-    const snapshot = structuredClone(this.preferences);
+    // 读取当前完整状态，用于一致展示或顺序持久化
+    const snapshot = {
+      settingsVersion: 2,
+      ...structuredClone(this.preferences),
+    };
     this.saving = this.saving
       .catch(() => undefined)
       .then(() => this.saveData(snapshot));
     return this.saving;
   }
-  /** 给用户显示事实错误，不记录敏感事项内容到外部 */
+  /** 可见通知，不向任何外部服务发送事项内容 */
   notify(message: string): void {
     new Notice(message, 7000);
   }
-  /** 打开新建或编辑表单 */
-  edit(date: string, item?: Item): void {
-    new ItemModal(this.app, this, date, item).open();
+  /** 新建只需要名称 */
+  create(date?: string): void {
+    new ItemModal(this.app, this, date).open();
   }
-  /** 由公开工作区 API 打开事项笔记 */
+  /** 标题点击只打开文档，不打开复杂编辑表单 */
   async open(item: Item): Promise<void> {
     // 确认文件仍存在，避免向已删除或替换的路径写入
     const file = this.app.vault.getAbstractFileByPath(item.path);
     if (!(file instanceof TFile)) throw new Error("事项文件不存在");
     await this.app.workspace.getLeaf("tab").openFile(file);
   }
-  /** 删除需用户在具体事项上确认，回收到用户选择的位置 */
-  trash(item: Item): void {
-    new ConfirmModal(
-      this.app,
-      "删除事项",
-      `将“${item.title}”的笔记移到回收站？`,
-      () => this.repository.trash(item),
-      this.notify,
-    ).open();
+  /** 列表删除入口直接按配置回收或移除专属属性 */
+  remove(item: Item): void {
+    void this.repository
+      .removeItem(item, this.preferences.preserveOnDelete)
+      .catch((error) => this.notify(String(error)));
   }
-  /** 状态变更后检查重新打开的过期待办 */
+  /** 完成状态变化保留累计次数，重新打开过期项后按规则处理 */
   async status(item: Item, status: Item["status"]): Promise<void> {
     await this.repository.status(item, status);
     if (status === "open") await this.checkRollover();
   }
-  /** 不重复改写状态，直接检查保存后的真实事项 */
-  afterEdit(): Promise<void> {
-    return this.checkRollover();
+  /** 右键集中承载手动改期，列表没有常驻改期按钮 */
+  context(item: Item, event: MouseEvent): void {
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const menu = new Menu();
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const action = (
+      title: string,
+      operation: () => Promise<void> | void,
+    ): void => {
+      menu.addItem((entry) =>
+        entry.setTitle(title).onClick(() => {
+          Promise.resolve()
+            .then(operation)
+            .catch((error) => this.notify(String(error)));
+        }),
+      );
+    };
+    if (!item.date || item.date < localDay())
+      action("移到今天", () => this.repository.schedule(item, localDay()));
+    action(
+      this.preferences.rolloverMode === "workday"
+        ? "移到下一个工作日"
+        : "移到下一个自然日",
+      async () => {
+        // 保存当前处理阶段的事实结果，供后续校验与展示
+        const base =
+          item.date && item.date > localDay() ? item.date : localDay();
+        // 计算后续日期或新路径，不沿用已失效的状态
+        const next = addDays(base, 1);
+        // 按本地自然日计算排期，避开 UTC 解析偏移
+        const date =
+          this.preferences.rolloverMode === "workday"
+            ? this.holidays.nextWorkday(next)
+            : next;
+        if (!date) throw new Error("正式节假日未收录，无法确认下一个工作日");
+        await this.repository.schedule(item, date);
+      },
+    );
+    action("选择日期……", () =>
+      new DateModal(this.app, item, (date) =>
+        this.repository.schedule(item, date),
+      ).open(),
+    );
+    if (item.date) action("移入待办箱", () => this.repository.schedule(item));
+    menu.addSeparator();
+    action(
+      this.preferences.preserveOnDelete
+        ? "移除事项属性，保留文档"
+        : "删除文档到回收站",
+      () => this.remove(item),
+    );
+    menu.showAtMouseEvent(event);
   }
-  /** 打开大屏或侧栏视图，可由 Obsidian 移到独立窗口 */
-  async openCalendar(sidebar = false): Promise<void> {
+  /** 配置及兼容横幅共享同一迁移入口 */
+  migrate(): void {
+    new ImportModal(this.app, this, () => this.checkRollover()).open();
+  }
+  /** 默认恢复同一侧栏，不抢当前主编辑区焦点 */
+  async openCalendar(
+    sidebar = true,
+    focus = true,
+    inbox = false,
+  ): Promise<void> {
+    // 记录已存在的文件或来源，避免覆盖和重复导入
+    const existing = this.app.workspace
+      .getLeavesOfType(CALENDAR_VIEW)
+      .find((leaf) => Boolean(leaf.view.getState().compact) === sidebar);
     // 取得当前工作区目标页签，承载独立视图
-    const leaf = sidebar
-      ? this.app.workspace.getRightLeaf(false)
-      : this.app.workspace.getLeaf("tab");
+    const leaf =
+      existing ??
+      (sidebar
+        ? this.app.workspace.getRightLeaf(true)
+        : this.app.workspace.getLeaf("tab"));
     if (!leaf) throw new Error("无法创建日历页签");
-    await leaf.setViewState({
-      type: CALENDAR_VIEW,
-      active: true,
-      state: { compact: sidebar },
-    });
-    await this.app.workspace.revealLeaf(leaf);
+    if (!existing || focus || inbox)
+      await leaf.setViewState({
+        type: CALENDAR_VIEW,
+        active: focus,
+        state: { compact: sidebar, inbox },
+      });
+    if (focus) await this.app.workspace.revealLeaf(leaf);
+    else this.app.workspace.rightSplit.expand();
   }
-  /** 独立番茄钟默认打开在侧栏 */
+  /** 独立番茄钟由图标及状态栏进入，不占常用命令 */
   async openTimer(): Promise<void> {
     if (!this.preferences.timerEnabled) {
-      this.notify("请先在 Daylane 设置中启用番茄钟");
+      this.notify("请在设置中启用独立番茄钟");
       return;
     }
     // 取得当前工作区目标页签，承载独立视图
     const leaf =
       this.app.workspace.getLeavesOfType(TIMER_VIEW)[0] ??
-      this.app.workspace.getRightLeaf(false);
+      this.app.workspace.getRightLeaf(true);
     if (!leaf) throw new Error("无法打开番茄钟");
     await leaf.setViewState({ type: TIMER_VIEW, active: true });
     await this.app.workspace.revealLeaf(leaf);
   }
-  /** 由用户启动手势解锁可选本地提示音 */
+  /** 用户开始手势提前解锁音频 */
   prepareSound(): void {
     if (!this.preferences.sound) return;
     try {
@@ -264,7 +367,7 @@ export default class DaylanePlugin extends Plugin implements UiHost {
       this.notify("提示音不可用，到时仍会显示文字通知");
     }
   }
-  /** 自生成短音，不读取网络资源 */
+  /** 本地产生短音，不下载音频资源 */
   private playSound(): void {
     if (
       !this.preferences.sound ||
@@ -288,23 +391,31 @@ export default class DaylanePlugin extends Plugin implements UiHost {
       gain.disconnect();
     };
   }
-  /** 汇总操作结果，自动检查无变化时保持安静 */
-  private showResult(result: BatchResult, title: string, quiet = false): void {
-    if (!quiet || result.changed || result.skipped || result.errors.length)
-      this.notify(
-        `${title}：成功 ${result.changed}，跳过 ${result.skipped}${result.errors.length ? `\n${result.errors.join("\n")}` : ""}`,
-      );
+  /** 真实处理结果区分成功、入箱、跳过与失败 */
+  private showResult(result: BatchResult, title: string): void {
+    this.notify(
+      title +
+        "：成功 " +
+        result.changed +
+        "，其中入箱 " +
+        result.inbox +
+        "，跳过 " +
+        result.skipped +
+        (result.errors.length ? "\n" + result.errors.join("\n") : ""),
+    );
   }
-  /** 前台、启动和午夜共同调用同一执行器 */
+  /** 自动检查无变化保持安静，相同缺失年度提示不重复弹出 */
   async checkRollover(): Promise<void> {
-    if (this.stopped) return;
-    try {
-      this.showResult(await this.rollover.run(), "待办流转", true);
-    } catch (error) {
-      this.notify(`流转失败：${String(error)}`);
-    }
+    if (this.stopped || this.repository.progress.active) return;
+    // 汇总实际操作成功、跳过与失败，避免向用户伪报结果
+    const result = await this.rollover.run();
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const error = result.errors.join("\n");
+    if (result.changed || result.skipped || (error && error !== this.lastError))
+      this.showResult(result, "未完成事项流转");
+    this.lastError = error;
   }
-  /** 重设本地午夜检查并清理旧调度 */
+  /** 本地午夜而非固定二十四小时调度 */
   private scheduleMidnight(): void {
     if (this.midnight !== null) window.clearTimeout(this.midnight);
     this.midnight = window.setTimeout(() => {
@@ -315,20 +426,31 @@ export default class DaylanePlugin extends Plugin implements UiHost {
       this.scheduleMidnight();
     }, midnightDelay());
   }
-  /** 更新统一番茄钟状态栏，不写入计时会话 */
+  /** 更新独立计时状态栏 */
   private updateStatus(): void {
     if (!this.statusEl) return;
     // 读取当前运行阶段，驱动计时文字与交互状态
     const state = this.timer.snapshot();
     this.statusEl.hidden = !this.preferences.timerEnabled;
-    this.statusEl.textContent = `◷ ${state.mode === "focus" ? "专注" : "休息"} ${timerLabel(state.seconds)}${state.status === "paused" ? " · 暂停" : ""}`;
+    this.statusEl.textContent =
+      "◷ " +
+      (state.mode === "focus" ? "专注" : "休息") +
+      " " +
+      timerLabel(state.seconds) +
+      (state.status === "paused" ? " · 暂停" : "");
   }
-  /** 修改设置后只影响下一轮时长与后续日历展示 */
+  /** 设置校验与保存失败回退，范围切换不搬文档 */
   async configure(patch: Partial<Preferences>): Promise<void> {
-    if (patch.folder) patch.folder = safeFolder(patch.folder);
-    // 识别目录范围变更，只在必要时重建事项索引
-    const changedFolder =
-      patch.folder && patch.folder !== this.preferences.folder;
+    if (patch.folder !== undefined) patch.folder = safeFolder(patch.folder);
+    if (
+      patch.maxRollovers !== undefined &&
+      (!Number.isInteger(patch.maxRollovers) || patch.maxRollovers < 1)
+    )
+      throw new Error("最大流转次数应为正整数");
+    // 逐项处理当前业务集合，保留每项自己的状态与结果
+    for (const key of ["focusMinutes", "breakMinutes"] as const)
+      if (patch[key] !== undefined && !validMinutes(patch[key]))
+        throw new Error("时长应为 1—240 的整数分钟");
     // 保存修改前的事实快照，失败时恢复或验证变化边界
     const previous = structuredClone(this.preferences);
     Object.assign(this.preferences, patch);
@@ -338,7 +460,14 @@ export default class DaylanePlugin extends Plugin implements UiHost {
       this.preferences = previous;
       throw error;
     }
-    if (changedFolder) await this.repository.configure(this.preferences.folder);
+    if (
+      previous.folder !== this.preferences.folder ||
+      previous.limitToFolder !== this.preferences.limitToFolder
+    )
+      await this.repository.configure(
+        this.preferences.folder,
+        this.preferences.limitToFolder,
+      );
     if (!this.preferences.timerEnabled) this.timer.reset();
     else if (
       this.timer.snapshot().status === "idle" &&
@@ -355,78 +484,38 @@ export default class DaylanePlugin extends Plugin implements UiHost {
     }
     this.repository.changes.emit();
     this.timer.changes.emit();
-    await this.checkRollover();
+    if (patch.rolloverMode !== undefined || patch.maxRollovers !== undefined)
+      await this.checkRollover();
   }
-  /** 注册命令，通过统一异常出口处理写入失败 */
+  /** 常用命令严格保留五条 */
   private commands(): void {
-    // 命令包装只处理异常，不添加业务分支
+    // 统一注册宿主命令及异常出口，不增加业务测试分支
     const command = (
       id: string,
       name: string,
-      action: () => void | Promise<void>,
+      operation: () => Promise<void>,
     ): void => {
       this.addCommand({
         id,
         name,
         callback: () => {
-          Promise.resolve()
-            .then(action)
-            .catch((error) =>
-              this.notify(
-                error instanceof Error ? error.message : String(error),
-              ),
-            );
+          void operation().catch((error) => this.notify(String(error)));
         },
       });
     };
-    command("open-calendar", "打开大屏日历", () => this.openCalendar());
     command("open-sidebar", "打开侧栏日历", () => this.openCalendar(true));
-    command("new-item", "新建重要事项或待办", () => this.edit(localDay()));
-    command("today", "查看今天待办", () => this.openCalendar());
-    command("roll-to-today", "将此前未完成待办移到今天", async () =>
-      this.showResult(await this.rollover.run(true), "手动改期"),
+    command("open-calendar", "打开大屏日历", () => this.openCalendar(false));
+    command("roll-to-today", "将此前所有未完成待办移到今天", async () =>
+      this.showResult(await this.rollover.moveToToday(), "手动移到今天"),
     );
-    command("undo-rollover", "撤回最近一次流转", async () =>
-      this.showResult(await this.rollover.undo(), "撤回流转"),
+    command("complete-today", "完成今日所有待办", async () =>
+      this.showResult(await this.rollover.completeToday(), "完成今日所有待办"),
     );
-    command("refresh-index", "重新扫描事项文件", async () => {
-      await this.repository.scan();
-      this.notify(
-        `扫描完成：${this.repository.items().length} 条有效事项，${this.repository.issues.size} 个问题`,
-      );
-    });
-    command("import-calendar-plus", "导入 Calendar Plus 重要事项", () =>
-      new ImportModal(this.app, this).open(),
+    command("open-inbox", "查看待办箱", () =>
+      this.openCalendar(true, true, true),
     );
-    command("open-timer", "打开独立番茄钟", () => this.openTimer());
-    command("toggle-timer", "番茄钟开始或暂停", () => {
-      if (!this.preferences.timerEnabled) throw new Error("番茄钟已关闭");
-      if (this.timer.snapshot().status === "running") this.timer.pause();
-      else {
-        // 已结束轮次启动时读取最新默认配置，暂停轮次保持原时长
-        const snapshot = this.timer.snapshot();
-        if (snapshot.status === "finished")
-          this.timer.select(
-            snapshot.mode,
-            snapshot.mode === "focus"
-              ? this.preferences.focusMinutes
-              : this.preferences.breakMinutes,
-          );
-        this.prepareSound();
-        this.timer.start();
-      }
-    });
-    command("reset-timer", "重置番茄钟", () => this.timer.reset());
-    this.addCommand({
-      id: "insert-calendar",
-      name: "插入日历代码块",
-      editorCallback: (editor) =>
-        editor.replaceSelection(
-          "```daylane\nmonth: current\nshow-holidays: true\ninteractive: true\n```\n",
-        ),
-    });
   }
-  /** 释放插件资源，关闭应用后不继续计时 */
+  /** 卸载当前插件全部视图和定时资源 */
   onunload(): void {
     this.stopped = true;
     this.app.workspace.detachLeavesOfType(CALENDAR_VIEW);
@@ -437,246 +526,289 @@ export default class DaylanePlugin extends Plugin implements UiHost {
     if (this.audio) void this.audio.close();
   }
 }
-/** Obsidian 页签承载共享日历组件 */
+/** 日历宿主，大屏和侧栏组件完全一致 */
 class CalendarView extends ItemView {
-  /** 当前组件实例 */
+  /** 当前订阅实例 */
   private panel: CalendarPanel | null = null;
-  /** 侧栏是否使用紧凑布局 */
-  private compact = false;
-  /** 注入插件业务服务 */
+  /** 页签布局和入口 */
+  private state: { compact: boolean; inbox: boolean } = {
+    compact: false,
+    inbox: false,
+  };
+  /** 注入共享服务 */
   constructor(
     leaf: WorkspaceLeaf,
-    private plugin: DaylanePlugin,
+    private plugin: DaymarkPlugin,
   ) {
     super(leaf);
   }
-  /** Obsidian 视图身份 */
+  /** 保持原视图身份 */
   getViewType(): string {
     return CALENDAR_VIEW;
   }
-  /** 用户看到的页签名称 */
+  /** 页签标题 */
   getDisplayText(): string {
-    return "Daylane · 中国节假日日历";
+    return "Daymark · 重要事项日历";
   }
-  /** 视图图标 */
+  /** 页签图标 */
   getIcon(): string {
     return "calendar-days";
   }
-  /** 工作区恢复侧栏布局设置 */
+  /** 恢复侧栏或待办箱入口 */
   async setState(
-    state: { compact?: boolean },
+    state: { compact?: boolean; inbox?: boolean },
     result: { history: boolean },
   ): Promise<void> {
-    this.compact = Boolean(state.compact);
+    this.state = {
+      compact: Boolean(state.compact),
+      inbox: Boolean(state.inbox),
+    };
     await super.setState(state, result);
     this.panel?.dispose();
-    this.panel = new CalendarPanel(this.contentEl, this.plugin, {
-      compact: this.compact,
-    });
+    this.panel = new CalendarPanel(this.contentEl, this.plugin, this.state);
   }
-  /** 保存当前宿主布局状态 */
-  getState(): { compact: boolean } {
-    return { compact: this.compact };
+  /** 宿主判断是否已有侧栏页签 */
+  getState(): { compact: boolean; inbox: boolean } {
+    return this.state;
   }
-  /** 打开页签挂载日历 */
+  /** 挂载月历 */
   async onOpen(): Promise<void> {
-    this.panel = new CalendarPanel(this.contentEl, this.plugin, {
-      compact: this.compact,
-    });
+    this.panel?.dispose();
+    this.panel = new CalendarPanel(this.contentEl, this.plugin, this.state);
   }
-  /** 关闭页签只卸载当前组件 */
+  /** 关闭仅清理当前视图 */
   async onClose(): Promise<void> {
     this.panel?.dispose();
     this.panel = null;
   }
 }
-/** 独立番茄钟宿主 */
+/** 独立番茄钟面板 */
 class FocusView extends ItemView {
-  /** 当前计时面板 */
+  /** 当前共享计时订阅 */
   private panel: TimerPanel | null = null;
-  /** 注入插件统一计时服务 */
+  /** 注入服务 */
   constructor(
     leaf: WorkspaceLeaf,
-    private plugin: DaylanePlugin,
+    private plugin: DaymarkPlugin,
   ) {
     super(leaf);
   }
-  /** 独立视图类型 */
+  /** 视图类型 */
   getViewType(): string {
     return TIMER_VIEW;
   }
   /** 页签名称 */
   getDisplayText(): string {
-    return "Daylane · 番茄钟";
+    return "Daymark · 番茄钟";
   }
   /** 页签图标 */
   getIcon(): string {
     return "timer";
   }
-  /** 打开时订阅共享状态 */
+  /** 面板不创建自己的计时器 */
   async onOpen(): Promise<void> {
     this.panel = new TimerPanel(this.contentEl, this.plugin);
   }
-  /** 关闭视图不停止计时 */
+  /** 关面板仍继续计时 */
   async onClose(): Promise<void> {
     this.panel?.dispose();
     this.panel = null;
   }
 }
-/** 阅读视图与实时预览日历的资源生命周期 */
+/** 阅读视图与实时预览共用日历资源 */
 class EmbeddedCalendar extends MarkdownRenderChild {
-  /** 单个代码块对应的组件 */
+  /** 当前代码块组件 */
   private panel: CalendarPanel | null = null;
-  /** 注入实例选项 */
+  /** 注入独立实例选项 */
   constructor(
     container: HTMLElement,
-    private plugin: DaylanePlugin,
+    private plugin: DaymarkPlugin,
     private options: CalendarOptions,
   ) {
     super(container);
   }
-  /** 挂载共享事项日历 */
+  /** 笔记显示时挂载 */
   onload(): void {
     this.panel = new CalendarPanel(this.containerEl, this.plugin, this.options);
   }
-  /** 笔记重新渲染时清理订阅 */
+  /** 重新渲染时取消订阅 */
   onunload(): void {
     this.panel?.dispose();
   }
 }
-/** 精简设置，不引入周期笔记配置 */
-class DaylaneSettings extends PluginSettingTab {
-  /** 注入插件持久化配置边界 */
-  constructor(private plugin: DaylanePlugin) {
+/** 事项与番茄钟分开两张配置卡片 */
+class DaymarkSettings extends PluginSettingTab {
+  /** 绑定精简配置与迁移入口 */
+  constructor(private plugin: DaymarkPlugin) {
     super(plugin.app, plugin);
   }
-  /** 构建中文偏好与默认时长设置 */
+  /** 常用设置少量展示，高级能力折叠 */
   display(): void {
     this.containerEl.replaceChildren();
-    element(this.containerEl, "h2", "", "Daylane · 中国节假日与待办日历");
-    // 读取偏好快照，验证默认行为与单项覆盖
-    const settings = this.plugin.getPreferences();
-    new Setting(this.containerEl)
-      .setName("事项目录")
-      .setDesc("只索引此目录；变更目录不会移动已有事项文件。")
-      .addText((input) => {
-        input.setValue(settings.folder);
-        input.inputEl.addEventListener("change", () => {
-          void this.plugin
-            .configure({ folder: input.getValue() })
-            .catch((error) => this.plugin.notify(String(error)));
-        });
-      });
-    // 设置开关只更新所属业务字段
-    const toggle = (
-      name: string,
-      key:
-        | "mondayFirst"
-        | "showCompleted"
-        | "showHolidays"
-        | "autoRollover"
-        | "timerEnabled"
-        | "sound",
+    // 读取统一事项集合，供当前视图筛选与分组展示
+    const items = element(this.containerEl, "section", "daylane-settings-card");
+    element(items, "h3", "", "重要事项");
+    // 呈现单条事项详情与明确操作入口
+    const row = (
+      parent: HTMLElement,
+      title: string,
       description: string,
-    ): void => {
-      new Setting(this.containerEl)
-        .setName(name)
-        .setDesc(description)
-        .addToggle((input) =>
-          input.setValue(settings[key]).onChange(async (value) => {
-            try {
-              await this.plugin.configure({ [key]: value });
-            } catch (error) {
-              this.plugin.notify(String(error));
-            }
-          }),
-        );
+    ): HTMLElement => {
+      // 保存当前处理阶段的事实结果，供后续校验与展示
+      const line = element(parent, "div", "daylane-setting");
+      // 保存当前处理阶段的事实结果，供后续校验与展示
+      const text = element(line, "div", "daylane-setting-text");
+      element(text, "strong", "", title);
+      if (description) element(text, "small", "", description);
+      return line;
     };
-    new Setting(this.containerEl).setName("新事项颜色").addDropdown((input) => {
-      input
-        .addOptions({
-          blue: "蓝",
-          green: "绿",
-          orange: "橙",
-          red: "红",
-          purple: "紫",
-          gray: "灰",
-        })
-        .setValue(settings.color)
-        .onChange(async (value) => {
-          await this.plugin
-            .configure({ color: value })
-            .catch((error) => this.plugin.notify(String(error)));
-        });
-    });
-    toggle(
-      "每周从周一开始",
-      "mondayFirst",
-      "影响大屏、侧栏与代码块的日期排列。",
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const preferences = this.plugin.getPreferences();
+    // 读取用户指定目录，限定索引与迁移范围
+    const folder = element(
+      row(
+        items,
+        "事项目录",
+        "新文档写入此目录；目录限制开启时读取此目录及子目录。",
+      ),
+      "input",
+      "daylane-setting-control",
     );
-    toggle("显示已完成和取消事项", "showCompleted", "关闭后只显示未完成事项。");
-    toggle(
-      "显示中国正式节假日",
-      "showHolidays",
-      "内置 2025、2026 年国务院公告安排；包含调休上班日，未收录年份有明确提示。",
-    );
-    toggle(
-      "自动流转未完成待办",
-      "autoRollover",
-      "默认关闭；在本地午夜或下次打开插件时，把过期待办移到当前目标日期。固定日程与截止日期保持不变。",
-    );
-    new Setting(this.containerEl)
-      .setName("自动流转日期规则")
-      .setDesc("工作日模式遇到未收录年度会暂缓，不猜测正式放假安排。")
-      .addDropdown((input) => {
-        input
-          .addOptions({
-            calendar: "自然日：移到今天",
-            workday: "工作日：今天或下一个正式工作日",
-          })
-          .setValue(settings.rolloverMode)
-          .onChange(async (value) => {
-            await this.plugin
-              .configure({ rolloverMode: value as Preferences["rolloverMode"] })
-              .catch((error) => this.plugin.notify(String(error)));
-          });
+    folder.value = preferences.folder;
+    folder.setAttribute("aria-label", "事项目录");
+    folder.addEventListener("change", () => {
+      void this.plugin.configure({ folder: folder.value }).catch((error) => {
+        folder.value = this.plugin.getPreferences().folder;
+        this.plugin.notify(String(error));
       });
-    toggle(
-      "启用独立番茄钟",
-      "timerEnabled",
-      "不关联事项；关闭或重载插件后本轮计时停止。",
+    });
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const rule = element(
+      row(
+        items,
+        "自动流转日期规则",
+        "未完成历史事项自动移到下一日期；累计达到上限后入箱。",
+      ),
+      "select",
+      "daylane-setting-control",
     );
     // 逐项处理当前业务集合，保留每项自己的状态与结果
-    for (const [key, name] of [
-      ["focusMinutes", "专注时长（分钟）"],
-      ["breakMinutes", "休息时长（分钟）"],
-    ] as const) {
-      new Setting(this.containerEl)
-        .setName(name)
-        .setDesc("1—240 的整数；修改不影响正在运行的轮次。")
-        .addText((input) => {
-          input.inputEl.type = "number";
-          input.inputEl.min = "1";
-          input.inputEl.max = "240";
-          input.setValue(String(settings[key]));
-          input.inputEl.addEventListener("change", () => {
-            // 读取并校验用户输入，拒绝无效配置或日期
-            const value = Number(input.getValue());
-            if (!validMinutes(value)) {
-              this.plugin.notify("时长应为 1—240 的整数分钟");
-              input.setValue(String(settings[key]));
-              return;
-            }
-            void this.plugin
-              .configure({ [key]: value })
-              .catch((error) => this.plugin.notify(String(error)));
-          });
-        });
+    for (const [value, title] of [
+      ["workday", "未完成事项移到下一个工作日"],
+      ["calendar", "未完成事项移到下一个自然日"],
+    ]) {
+      // 为受控输入添加合法选项，不猜测用户配置
+      const option = element(rule, "option", "", title);
+      option.value = value;
     }
+    rule.value = preferences.rolloverMode;
+    rule.addEventListener("change", () => {
+      void this.plugin
+        .configure({ rolloverMode: rule.value as Preferences["rolloverMode"] })
+        .catch((error) => this.plugin.notify(String(error)));
+    });
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const advanced = element(items, "details");
+    element(advanced, "summary", "", "高级与实验性设置");
+    // 创建统一开关操作，保持偏好和可见状态一致
+    const toggle = (
+      parent: HTMLElement,
+      title: string,
+      key: "limitToFolder" | "preserveOnDelete" | "timerEnabled" | "sound",
+      description: string,
+    ): void => {
+      // 创建或读取可操作表单控件，保留尚未提交的输入
+      const input = element(row(parent, title, description), "input");
+      input.type = "checkbox";
+      input.checked = preferences[key];
+      input.setAttribute("aria-label", title);
+      input.addEventListener("change", () => {
+        void this.plugin
+          .configure({ [key]: input.checked })
+          .then(() => {
+            if (key === "timerEnabled") this.display();
+          })
+          .catch((error) => {
+            input.checked = this.plugin.getPreferences()[key];
+            this.plugin.notify(String(error));
+          });
+      });
+    };
     toggle(
-      "到时播放短提示音",
-      "sound",
-      "本地生成短音，不使用网络资源；不可用时仍显示文字提示。",
+      advanced,
+      "仅扫描事项目录",
+      "limitToFolder",
+      "关闭后扫描整个 Vault；仍只识别专属标记，全库首扫有读取成本。",
     );
+    // 保存当前处理阶段的事实结果，供后续校验与展示
+    const number = (
+      parent: HTMLElement,
+      title: string,
+      key: "maxRollovers" | "focusMinutes" | "breakMinutes",
+      description: string,
+    ): void => {
+      // 创建或读取可操作表单控件，保留尚未提交的输入
+      const input = element(
+        row(parent, title, description),
+        "input",
+        "daylane-setting-control",
+      );
+      input.type = "number";
+      input.min = "1";
+      input.step = "1";
+      if (key !== "maxRollovers") input.max = "240";
+      input.value = String(preferences[key]);
+      input.setAttribute("aria-label", title);
+      input.addEventListener("change", () => {
+        void this.plugin
+          .configure({ [key]: Number(input.value) })
+          .catch((error) => {
+            input.value = String(this.plugin.getPreferences()[key]);
+            this.plugin.notify(String(error));
+          });
+      });
+    };
+    number(
+      advanced,
+      "最大自动流转次数",
+      "maxRollovers",
+      "默认允许 5 次，第 6 次入箱；手动改期、入箱、完成均不清零次数。",
+    );
+    toggle(
+      advanced,
+      "删除重要事项时保留文档（实验性）",
+      "preserveOnDelete",
+      "仅移除四个专属 YAML 属性；关闭时删除整篇文档到回收站。",
+    );
+    button(
+      advanced,
+      "预览旧事项迁移",
+      () => this.plugin.migrate(),
+      this.plugin.notify,
+    );
+    // 建立独立计时状态机，不依赖事项数据
+    const timer = element(this.containerEl, "section", "daylane-settings-card");
+    element(timer, "h3", "", "独立番茄钟");
+    toggle(
+      timer,
+      "启用独立番茄钟",
+      "timerEnabled",
+      "与事项无关联，通过侧边图标或状态栏打开。",
+    );
+    if (preferences.timerEnabled) {
+      number(
+        timer,
+        "专注时长（分钟）",
+        "focusMinutes",
+        "默认 25，允许 1—240 的整数；不打断当前轮。",
+      );
+      number(timer, "休息时长（分钟）", "breakMinutes", "默认 5，允许自定义。");
+      toggle(
+        timer,
+        "到时播放短提示音",
+        "sound",
+        "默认开启，本地生成短音，失败仍有文字通知。",
+      );
+    }
   }
 }
