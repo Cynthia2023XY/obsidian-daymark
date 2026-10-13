@@ -1,0 +1,24 @@
+.npmrc
+  s_501b214c714424::t_408ec35783acad 1
+tests/main-test.ts
+  s_501b214c714424::t_408ec35783acad 170-181,183-187,189-196
+  s_501b214c714424::t_baac933c524eaf 182,188
+src/main.ts
+  s_501b214c714424::t_408ec35783acad 529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "b1a87187249c7132ec140f762a2368c242d70b31",
+  "prompts": {},
+  "sessions": {
+    "s_501b214c714424": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1330a-dfdb-7e32-b007-212923936e5b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "dingxinyi.2 <dingxinyi.2@jd.com>"
+    }
+  }
+}
