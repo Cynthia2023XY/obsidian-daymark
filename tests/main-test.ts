@@ -167,6 +167,33 @@ function unload(plugin: DaymarkPlugin, mock: Plugin): void {
 }
 /** 常用命令、默认侧栏、设置卡片和右键行为 */
 describe("单日插件宿主", () => {
+  it("卸载保留日历与番茄钟面板，并停止索引和午夜定时资源", async () => {
+    // 使用生产生命周期验证用户布局保留与后台资源清理
+    const { plugin, mock, leaves } = pluginFixture();
+    await plugin.onload();
+    await plugin.openCalendar(false);
+    // 模拟用户已打开的独立番茄钟面板
+    const timerLeaf = plugin.app.workspace.getRightLeaf(false)!;
+    await timerLeaf.setViewState({ type: "daymark-chinese-calendar-timer" });
+    // 保留卸载前的面板引用，确认宿主布局未被移除
+    const retainedLeaves = [...leaves];
+    // 核对索引服务与午夜定时器仍会清理
+    const dispose = vi.spyOn(plugin.repository, "dispose");
+    // 观察卸载是否取消已安排的午夜检查
+    const clearTimeout = vi.spyOn(window, "clearTimeout");
+    try {
+      unload(plugin, mock);
+      expect(plugin.app.workspace.detachLeavesOfType).not.toHaveBeenCalled();
+      expect(leaves).toEqual(retainedLeaves);
+      // 每个已打开的面板都应由宿主保留
+      for (const leaf of leaves) expect(leaf.detach).not.toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledOnce();
+      expect(clearTimeout).toHaveBeenCalled();
+    } finally {
+      dispose.mockRestore();
+      clearTimeout.mockRestore();
+    }
+  });
   it("监听先于首扫，命令严格五条且默认恢复侧栏不重复", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { plugin, mock, order, ready, leaves, expand } = pluginFixture();

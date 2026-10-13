@@ -526,11 +526,9 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
       this.openCalendar(true, true, true),
     );
   }
-  /** 卸载当前插件全部视图和定时资源 */
+  /** 停止插件资源，保留宿主管理的面板位置供重新启用恢复 */
   onunload(): void {
     this.stopped = true;
-    this.app.workspace.detachLeavesOfType(CALENDAR_VIEW);
-    this.app.workspace.detachLeavesOfType(TIMER_VIEW);
     if (this.midnight !== null) window.clearTimeout(this.midnight);
     this.repository?.dispose();
     this.timer?.changes.clear();

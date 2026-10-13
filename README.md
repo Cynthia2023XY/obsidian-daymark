@@ -88,6 +88,6 @@ month 也可为 YYYY-MM。interactive: false 禁止创建、完成、删除与�
 
 ## 本地安装与开发
 
-运行 npm install、npm run test:run、npm run package。将 dist/daymark-chinese-calendar 的 main.js、manifest.json、styles.css 复制到目标库 .obsidian/plugins/daymark-chinese-calendar，保留已有 data.json，然后重新加载插件。发行压缩包为 dist/daymark-chinese-calendar-0.2.1.zip。发布准备与本地验收不等于已通过社区市场审核；目录状态以官方页面为准。
+运行 npm install、npm run test:run、npm run package。将 dist/daymark-chinese-calendar 的 main.js、manifest.json、styles.css 复制到目标库 .obsidian/plugins/daymark-chinese-calendar，保留已有 data.json，然后重新加载插件。发行压缩包为 dist/daymark-chinese-calendar-0.2.2.zip。发布准备与本地验收不等于已通过社区市场审核；目录状态以官方页面为准。
 
 [改造方案](docs/change-plan.md) · [验证报告](docs/verification-report.md) · [宿主验收清单](docs/manual-verification.md)
