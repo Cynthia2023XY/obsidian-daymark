@@ -308,6 +308,13 @@ export class ItemRepository {
       return true;
     });
   }
+  /** 仅更新高亮标记，取消时移除属性以保持普通笔记简洁 */
+  async highlight(item: Item, highlighted: boolean): Promise<void> {
+    await this.mutate(item, (fields) => {
+      assignFields(fields, { "daylane-highlighted": highlighted || undefined });
+      return true;
+    });
+  }
   /** 手动改期和移入待办箱均不清零计数 */
   async schedule(item: Item, date?: string): Promise<void> {
     draftFields({ title: item.title, date });

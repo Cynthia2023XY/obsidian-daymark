@@ -1,6 +1,7 @@
 .daylane-root {
   --daylane-accent: #4285df;
   --daylane-dot: #ff454f;
+  --daylane-highlight: #69baff;
   --daylane-pink: #ff83b5;
   --daylane-work: #ed9838;
   container-type: inline-size;
@@ -150,14 +151,22 @@
   color: var(--daylane-work);
   background: color-mix(in srgb, var(--daylane-work) 20%, transparent);
 }
+.daylane-dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
+}
 .daylane-dot {
   display: block;
   background: var(--daylane-dot);
   border-radius: 50%;
   width: clamp(5px, 1.4cqi, 10px);
   height: clamp(5px, 1.4cqi, 10px);
-  margin-top: 2px;
   flex-shrink: 0;
+}
+.daylane-highlight-dot {
+  background: var(--daylane-highlight);
 }
 .daylane-detail {
   margin-top: 32px;
@@ -200,6 +209,12 @@
 }
 .daylane-item:hover {
   background: var(--background-modifier-hover);
+}
+.daylane-item.is-highlighted {
+  background: color-mix(in srgb, var(--daylane-highlight) 20%, transparent);
+}
+.daylane-item.is-highlighted:hover {
+  background: color-mix(in srgb, var(--daylane-highlight) 30%, transparent);
 }
 .daylane-root input.daylane-checkbox[type="checkbox"] {
   appearance: none;

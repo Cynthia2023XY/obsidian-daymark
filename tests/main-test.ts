@@ -310,6 +310,25 @@ describe("单日插件宿主", () => {
       expect(settings.containerEl.textContent).not.toContain(label);
     unload(plugin, mock);
   });
+  it("右键高亮和取消高亮更新笔记并切换菜单文案", async () => {
+    // 通过公开菜单回调验证持久化链路
+    const { plugin, mock } = pluginFixture();
+    await plugin.onload();
+    plugin.context(plugin.repository.items()[0], new MouseEvent("contextmenu"));
+    Menu.last!.entries.find((entry) => entry.title === "高亮事项")!.action!();
+    await vi.waitFor(() =>
+      expect(plugin.repository.items()[0].highlighted).toBe(true),
+    );
+    plugin.context(plugin.repository.items()[0], new MouseEvent("contextmenu"));
+    expect(Menu.last!.entries.map((entry) => entry.title)).not.toContain(
+      "高亮事项",
+    );
+    Menu.last!.entries.find((entry) => entry.title === "取消高亮")!.action!();
+    await vi.waitFor(() =>
+      expect(plugin.repository.items()[0].highlighted).toBe(false),
+    );
+    unload(plugin, mock);
+  });
   it("右键菜单有改期和待办箱入口，不增加自动记录", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { plugin, mock } = pluginFixture();

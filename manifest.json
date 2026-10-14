@@ -1,7 +1,7 @@
 {
   "id": "daymark-chinese-calendar",
   "name": "Daymark - Chinese Holiday Calendar",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "minAppVersion": "1.7.4",
   "description": "Plan important events and rolling to-dos with built-in Chinese public holidays, embedded calendars, and a customizable focus timer.",
   "author": "Cynthia Ding",

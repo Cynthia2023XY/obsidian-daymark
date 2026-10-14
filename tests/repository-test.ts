@@ -3,6 +3,34 @@ import { ItemRepository, noteContent, splitNote } from "../src/repository";
 import { fixture, MemoryVault, todo } from "./helpers";
 /** 原文保留、范围识别、文件名与已知异步竞态 */
 describe("单日文档仓库", () => {
+  it("高亮持久化且完成改期入箱均保留，取消或移除身份清理标记", async () => {
+    // 使用真实仓库操作验证专属属性和原文保护
+    const { repository, vault } = await fixture();
+    // 保存目标路径，后续每次读取最新事项状态
+    const path = repository.items()[0].path;
+    expect(repository.items()[0].highlighted).toBe(false);
+    await repository.highlight(repository.items()[0], true);
+    await repository.scan();
+    expect(repository.items()[0].highlighted).toBe(true);
+    await repository.status(repository.items()[0], "completed");
+    await repository.schedule(repository.items()[0], "2026-10-15");
+    await repository.schedule(repository.items()[0]);
+    expect(repository.inbox()[0].highlighted).toBe(true);
+    expect(
+      splitNote(await vault.read(path), vault.parseYaml).fields.custom,
+    ).toBe("保留");
+    expect(await vault.read(path)).toContain("完整说明");
+    await repository.highlight(repository.items()[0], false);
+    expect(repository.items()[0].highlighted).toBe(false);
+    expect(
+      splitNote(await vault.read(path), vault.parseYaml).fields,
+    ).not.toHaveProperty("daylane-highlighted");
+    await repository.highlight(repository.items()[0], true);
+    await repository.removeItem(repository.items()[0], true);
+    expect(
+      splitNote(await vault.read(path), vault.parseYaml).fields,
+    ).not.toHaveProperty("daylane-highlighted");
+  });
   it("普通同名文档保持原文，新建使用数字且正文为二级标题", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { repository, vault } = await fixture();

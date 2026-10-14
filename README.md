@@ -1,6 +1,6 @@
 # Daymark - Chinese Holiday Calendar
 
-面向每日重要事项的 Obsidian 桌面插件。中国法定节假日和调休上班日离线展示；未完成事项自动顺延，过多顺延的事项进入待办箱。作者：Cynthia Ding。当前版本 0.2.3，最低 Obsidian 1.7.4。
+面向每日重要事项的 Obsidian 桌面插件。中国法定节假日和调休上班日离线展示；未完成事项自动顺延，过多顺延的事项进入待办箱。作者：Cynthia Ding。当前版本 0.2.4，最低 Obsidian 1.7.4。
 
 显示名称已从 Daylane 改为 Daymark，中文称“每日要事”。为兼容既有笔记与配置，插件 ID 为 daymark-chinese-calendar，YAML 属性仍使用 daylane- 前缀，代码块语言仍为 daylane，默认目录仍为 Daylane/Items。GitHub 仓库及本地源码目录为 obsidian-daymark，安装目录为 .obsidian/plugins/daymark-chinese-calendar。
 
@@ -29,7 +29,9 @@ Automatic rollover is enabled by default and changes past open items' dates and 
 
 插件加载后默认将日历放入左侧文件列表所在的标签组，不拆分上下侧栏，不抢占正在编辑的文档。侧栏、独立页面与 daylane 代码块共用同一月历：周一开始、红点表示事项、休／班角标表示法定节假日和调休工作日。点击日期查看下方事项，双击日期或点击“添加重要事项”只需输入名称。勾选完成，点击标题打开笔记，× 删除。已完成事项仍显示。
 
-新文件直接存放在配置目录，标题为二级标题。重名使用“名称 1.md”“名称 2.md”，不覆盖已有普通文档。列表右键可指定日期、移到下一自然日／工作日、放入待办箱和删除。默认删除整篇笔记并使用宿主回收机制；实验性设置可改成只删除四项专属 YAML 属性。
+新文件直接存放在配置目录，标题为二级标题。重名使用“名称 1.md”“名称 2.md”，不覆盖已有普通文档。列表右键可指定日期、移到下一自然日／工作日、放入待办箱和删除。默认删除整篇笔记并使用宿主回收机制；实验性设置可改成只删除插件专属 YAML 属性。
+
+右键选择“高亮事项”后，事项显示浅蓝色背景，所属日期的红点旁增加蓝点；再次右键选择“取消高亮”即可恢复。高亮状态保存在笔记属性中，完成、改期或移入待办箱后仍保留，侧栏、独立日历和内嵌日历同步显示。
 
 手动指定日期使用直接可点击的月历，支持切换月份、“今天／明天／一周后”快捷选择和 YYYY-MM-DD 文本输入。浏览与选择只修改弹窗草稿，确认后才保存；过去日期不可选择，保存失败时保留输入供重试。
 
@@ -46,6 +48,7 @@ daylane-rollover-count: 0
 ## 重要事项
 ~~~
 
+- daylane-highlighted：可选布尔值，设为 true 高亮事项；缺省或 false 不高亮，取消高亮时移除此属性。
 - daylane-type：识别标记，必须为 important-event。
 - daylane-date：单日日期，删除此属性即进入待办箱。
 - daylane-status：open 或 completed；缺省为 open。

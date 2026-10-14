@@ -10,6 +10,8 @@ export interface Item {
   date?: string;
   /** 事项完成状态 */
   status: ItemStatus;
+  /** 是否通过浅蓝背景突出事项，旧笔记缺省为未高亮 */
+  highlighted?: boolean;
   /** 累计实际自动改期次数，手动操作永不清零 */
   rolloverCount: number;
   /** 旧格式仅兼容展示，确认迁移前不自动写入 */
@@ -63,6 +65,7 @@ export const ITEM_FIELDS = [
   "daylane-date",
   "daylane-status",
   "daylane-rollover-count",
+  "daylane-highlighted",
 ] as const;
 /** 以本地日历语义输出日期，避免 UTC 解析偏移 */
 export function localDay(date = new Date()): string {
@@ -152,6 +155,7 @@ export function parseItem(
     date: dateText(fields["daylane-date"]),
     status,
     rolloverCount: countValue(fields["daylane-rollover-count"]),
+    highlighted: fields["daylane-highlighted"] === true,
     legacy: false,
   };
 }

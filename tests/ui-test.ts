@@ -16,6 +16,50 @@ afterEach(() => {
 });
 /** 参考样式的交互契约，不使用视觉快照模拟成功 */
 describe("红点月历和单日事项列表", () => {
+  it("高亮行与蓝点同步更新，同日多条高亮只显示一个蓝点", async () => {
+    // 当前日期同时安排普通事项与高亮事项
+    const host = await hostFixture();
+    await host.repository.schedule(host.repository.items()[0], "2026-10-12");
+    // 第二条事项用于验证同日圆点不会按事项重复
+    const second = await host.repository.create({
+      title: "重点事项",
+      date: "2026-10-12",
+    });
+    // 挂载可交互和只读两个日历，验证共享变化通知
+    const root = document.createElement("div");
+    // 只读日历也应展示高亮样式
+    const readonlyRoot = document.createElement("div");
+    // 交互日历订阅同一仓库
+    const panel = new CalendarPanel(root, host);
+    // 只读日历仅禁用编辑操作
+    const readonlyPanel = new CalendarPanel(readonlyRoot, host, {
+      interactive: false,
+    });
+    expect(root.querySelector(".daylane-highlight-dot")).toBeNull();
+    await host.repository.highlight(host.repository.items()[0], true);
+    await host.repository.highlight(second, true);
+    expect(root.querySelectorAll(".daylane-item.is-highlighted")).toHaveLength(
+      2,
+    );
+    expect(
+      readonlyRoot.querySelectorAll(".daylane-item.is-highlighted"),
+    ).toHaveLength(2);
+    expect(
+      root.querySelectorAll(
+        '[data-date="2026-10-12"] .daylane-dots .daylane-dot',
+      ),
+    ).toHaveLength(2);
+    await host.repository.highlight(host.repository.items()[0], false);
+    expect(root.querySelectorAll(".daylane-highlight-dot")).toHaveLength(1);
+    await host.repository.highlight(second, false);
+    expect(root.querySelector(".daylane-highlight-dot")).toBeNull();
+    expect(
+      root.querySelectorAll('[data-date="2026-10-12"] .daylane-dot'),
+    ).toHaveLength(1);
+    expect(root.querySelector(".daylane-item.is-highlighted")).toBeNull();
+    panel.dispose();
+    readonlyPanel.dispose();
+  });
   it("格子只有红点和休班，不显示任务卡片；所有状态可见", async () => {
     // 模拟宿主动作边界，组件使用真实业务服务
     const host = await hostFixture();

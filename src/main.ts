@@ -275,6 +275,10 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
         }),
       );
     };
+    action(item.highlighted ? "取消高亮" : "高亮事项", () =>
+      this.repository.highlight(item, !item.highlighted),
+    );
+    menu.addSeparator();
     if (!item.date || item.date < localDay())
       action("移到今天", () => this.repository.schedule(item, localDay()));
     action(

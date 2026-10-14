@@ -255,8 +255,22 @@ export class CalendarPanel {
           "daylane-holiday " + holiday.type,
           holiday.type === "holiday" ? "休" : "班",
         );
-      if (items.some((item) => item.date === date))
-        element(day, "span", "daylane-dot");
+      // 同一天只显示一组标记，高亮事项的蓝点与原有红点并排
+      const datedItems = items.filter((item) => item.date === date);
+      if (datedItems.length) {
+        // 统一承载日期圆点，避免增加蓝点后挤压日期数字
+        const dots = element(day, "span", "daylane-dots");
+        element(dots, "span", "daylane-dot").setAttribute(
+          "aria-label",
+          "有事项",
+        );
+        if (datedItems.some((item) => item.highlighted))
+          element(
+            dots,
+            "span",
+            "daylane-dot daylane-highlight-dot",
+          ).setAttribute("aria-label", "有高亮事项");
+      }
       day.addEventListener("click", () => this.select(date));
       day.addEventListener("dblclick", () => {
         if (this.options.interactive !== false) this.host.create(date);
@@ -341,6 +355,7 @@ export class CalendarPanel {
         "li",
         "daylane-item" + (item.status === "completed" ? " is-completed" : ""),
       );
+      row.classList.toggle("is-highlighted", item.highlighted === true);
       // 保存当前处理阶段的事实结果，供后续校验与展示
       const check = element(row, "input", "daylane-checkbox");
       check.type = "checkbox";
