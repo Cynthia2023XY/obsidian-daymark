@@ -327,6 +327,63 @@
   display: grid;
   gap: 12px;
 }
+.daylane-date-input-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.daylane-date-input-row input {
+  width: 150px;
+  font-variant-numeric: tabular-nums;
+}
+.daylane-date-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.daylane-date-calendar {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.daylane-date-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.daylane-date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.daylane-date-weekday {
+  text-align: center;
+  padding: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.daylane-date-grid button.daylane-date-day {
+  padding: 0;
+  height: 36px;
+  box-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+.daylane-date-day.is-outside {
+  color: var(--text-muted);
+}
+.daylane-date-grid button.daylane-date-day.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.daylane-date-day[aria-current="date"] {
+  border: 1px solid var(--interactive-accent);
+}
+.daylane-date-grid button:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
 .daylane-settings-card {
   margin: 16px 0;
   padding: 16px;

@@ -1,5 +1,13 @@
 import { App, Modal } from "obsidian";
-import { Item, ItemStatus, localDay, validDay } from "./domain";
+import {
+  addDays,
+  Item,
+  ItemStatus,
+  localDay,
+  monthDays,
+  shiftMonth,
+  validDay,
+} from "./domain";
 import { MigrationChoice, MigrationService } from "./migration";
 import { button, element, UiHost } from "./ui";
 
@@ -84,6 +92,7 @@ export class DateModal extends Modal {
   }
   /** 只选择今天或未来日期，累计次数明确保留 */
   onOpen(): void {
+    this.contentEl.replaceChildren();
     this.setTitle("安排「" + this.item.title + "」");
     // 组织单次事项编辑，成功写入后才关闭表单
     const form = element(this.contentEl, "form", "daylane-date-form");
@@ -94,11 +103,12 @@ export class DateModal extends Modal {
       "手动改期不会增加或清零累计自动流转次数。",
     );
     // 保存当前处理阶段的事实结果，供后续校验与展示
-    const label = element(form, "label", "", "指定日期 ");
+    const label = element(form, "label", "daylane-date-input-row", "指定日期");
     // 创建或读取可操作表单控件，保留尚未提交的输入
     const input = element(label, "input");
-    input.type = "date";
-    input.min = localDay();
+    input.type = "text";
+    input.placeholder = "YYYY-MM-DD";
+    input.setAttribute("aria-label", "指定日期，格式为 YYYY-MM-DD");
     input.required = true;
     input.value =
       this.item.date && this.item.date >= localDay()
@@ -106,6 +116,105 @@ export class DateModal extends Modal {
         : localDay();
     // 逐项记录可解释的失败，不把部分失败报告成全部成功
     const errors = element(form, "p", "daylane-form-error");
+    errors.setAttribute("role", "alert");
+    // 显示正在浏览的月份，切换月份不会直接修改所选日期
+    let month = input.value.slice(0, 7);
+    // 快捷日期与月历共用选择动作，确认前不会写入事项
+    const choose = (date: string): void => {
+      input.value = date;
+      month = date.slice(0, 7);
+      errors.textContent = "";
+      render();
+    };
+    // 常用日期直接点击，不依赖系统日期弹层
+    const shortcuts = element(form, "div", "daylane-date-shortcuts");
+    // 快捷操作只更新当前草稿，保存仍需明确确认
+    for (const [title, days] of [
+      ["今天", 0],
+      ["明天", 1],
+      ["一周后", 7],
+    ] as const) {
+      // 采用普通按钮避免快捷选择误提交表单
+      const quick = element(shortcuts, "button", "", title);
+      quick.type = "button";
+      quick.addEventListener("click", () => choose(addDays(localDay(), days)));
+    }
+    // 常驻月历在旧版 Electron 中也可直接操作
+    const calendar = element(form, "div", "daylane-date-calendar");
+    // 月历刷新只替换自身内容，保留日期输入和确认按钮
+    const render = (): void => {
+      calendar.replaceChildren();
+      // 月份导航仅浏览，不偷偷改动当前日期
+      const navigation = element(calendar, "div", "daylane-date-navigation");
+      // 防止浏览今天之前整月，未来月份可自由切换
+      const previous = element(navigation, "button", "", "‹");
+      previous.type = "button";
+      previous.setAttribute("aria-label", "上个月");
+      previous.disabled = month <= localDay().slice(0, 7);
+      previous.addEventListener("click", () => {
+        month = shiftMonth(month, -1);
+        render();
+      });
+      // 清楚展示年和月，不使用随系统语言变化的日期顺序
+      const heading = element(
+        navigation,
+        "strong",
+        "",
+        `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`,
+      );
+      heading.setAttribute("aria-live", "polite");
+      // 下一月允许跨年浏览
+      const next = element(navigation, "button", "", "›");
+      next.type = "button";
+      next.setAttribute("aria-label", "下个月");
+      next.addEventListener("click", () => {
+        month = shiftMonth(month, 1);
+        render();
+      });
+      // 星期与日期按周一开始排列
+      const grid = element(calendar, "div", "daylane-date-grid");
+      // 表头区分星期与可点击日期
+      for (const weekday of ["一", "二", "三", "四", "五", "六", "日"])
+        element(grid, "span", "daylane-date-weekday", weekday);
+      // 保持完整六周布局，跨月日期仍显示完整可访问标签
+      for (const date of monthDays(month, true)) {
+        // 每个日期都是独立按钮，过去日期禁止选择
+        const day = element(
+          grid,
+          "button",
+          "daylane-date-day",
+          String(Number(date.slice(8))),
+        );
+        day.type = "button";
+        day.dataset.date = date;
+        day.disabled = date < localDay();
+        day.setAttribute("aria-label", date);
+        day.setAttribute("aria-pressed", String(date === input.value));
+        day.classList.toggle("is-selected", date === input.value);
+        day.classList.toggle("is-outside", date.slice(0, 7) !== month);
+        if (date === localDay()) day.setAttribute("aria-current", "date");
+        day.addEventListener("click", () => {
+          choose(date);
+          calendar
+            .querySelector<HTMLButtonElement>(`[data-date="${date}"]`)
+            ?.focus();
+        });
+      }
+    };
+    input.addEventListener("input", () => {
+      if (validDay(input.value) && input.value >= localDay()) {
+        month = input.value.slice(0, 7);
+        errors.textContent = "";
+        render();
+      }
+    });
+    render();
+    element(
+      form,
+      "small",
+      "daylane-muted",
+      "点击日期或输入 YYYY-MM-DD，再确认保存。灰色日期不可选择。",
+    );
     // 保存或模拟持久化边界，检查写入成功后再确认完成
     const save = element(form, "button", "mod-cta", "确认日期");
     save.type = "submit";
@@ -117,6 +226,7 @@ export class DateModal extends Modal {
         return;
       }
       save.disabled = true;
+      errors.textContent = "";
       this.save(input.value)
         .then(() => this.close())
         .catch((error) => {
@@ -124,7 +234,11 @@ export class DateModal extends Modal {
           save.disabled = false;
         });
     });
-    input.focus();
+    calendar.querySelector<HTMLButtonElement>(".is-selected")?.focus();
+  }
+  /** 关闭时清理月历和未提交的日期草稿 */
+  onClose(): void {
+    this.contentEl.replaceChildren();
   }
 }
 /** 默认删除行为执行前说明具体文档与回收方式 */

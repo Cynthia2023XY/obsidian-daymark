@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { webcrypto } from "node:crypto";
 import { DateModal, ItemModal, ImportModal } from "../src/modals";
 import { hostFixture } from "./ui-host";
+import { addDays, localDay } from "../src/domain";
 /** 迁移摘要由浏览器标准接口提供 */
 beforeEach(() => {
   vi.stubGlobal("crypto", webcrypto);
@@ -75,5 +76,85 @@ describe("名称输入和独立日期选择", () => {
     modal.onOpen();
     expect(modal.contentEl.textContent).toContain("备份原文");
     expect(host.repository.items()).toHaveLength(1);
+  });
+  it("月历点击只修改草稿，跨年浏览不改日期，确认后才保存", async () => {
+    // 模拟当前事项，初始安排在年底以验证跨年切换
+    const host = await hostFixture();
+    // 记录实际保存边界，浏览与选择不能提前持久化
+    const save = vi.fn(async () => undefined);
+    // 确保年底日期属于未来，避免测试随执行年份失效
+    const year = new Date().getFullYear() + 1;
+    // 当前弹窗初始日期独立于今天
+    const modal = new DateModal(
+      {} as never,
+      { ...host.repository.items()[0], date: `${year}-12-20` },
+      save,
+    );
+    modal.onOpen();
+    // 文本输入不再使用原生分段日期控件
+    const input = modal.contentEl.querySelector("input")!;
+    expect(input.type).toBe("text");
+    modal.contentEl
+      .querySelector<HTMLButtonElement>('[aria-label="下个月"]')!
+      .click();
+    expect(input.value).toBe(`${year}-12-20`);
+    expect(modal.contentEl.textContent).toContain(`${year + 1} 年 1 月`);
+    modal.contentEl
+      .querySelector<HTMLButtonElement>(`[data-date="${year + 1}-01-05"]`)!
+      .click();
+    expect(input.value).toBe(`${year + 1}-01-05`);
+    expect(save).not.toHaveBeenCalled();
+    modal.contentEl
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() =>
+      expect(save).toHaveBeenCalledWith(`${year + 1}-01-05`),
+    );
+  });
+  it("过去日期不能点击，快捷选择同步月历，失败后保留日期以便重试", async () => {
+    // 使用真实业务事项构造独立弹窗
+    const host = await hostFixture();
+    // 模拟保存失败，不丢弃用户已经选择的日期
+    const save = vi.fn(async () => {
+      throw new Error("保存失败");
+    });
+    // 从今天开始，确保过去日期状态可验证
+    const modal = new DateModal(
+      {} as never,
+      { ...host.repository.items()[0], date: localDay() },
+      save,
+    );
+    modal.onOpen();
+    // 月历中所有过去日期都必须禁用
+    const past = [
+      ...modal.contentEl.querySelectorAll<HTMLButtonElement>("[data-date]"),
+    ].filter((day) => day.dataset.date! < localDay());
+    expect(past.every((day) => day.disabled)).toBe(true);
+    modal.contentEl
+      .querySelector<HTMLButtonElement>(
+        ".daylane-date-shortcuts button:nth-child(2)",
+      )!
+      .click();
+    // 明天快捷操作同步文本输入及月历选中标记
+    const tomorrow = addDays(localDay(), 1);
+    expect(
+      modal.contentEl.querySelector<HTMLInputElement>("input")!.value,
+    ).toBe(tomorrow);
+    expect(
+      modal.contentEl.querySelector<HTMLElement>(".is-selected")!.dataset.date,
+    ).toBe(tomorrow);
+    modal.contentEl
+      .querySelector("form")!
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() =>
+      expect(modal.contentEl.textContent).toContain("保存失败"),
+    );
+    expect(
+      modal.contentEl.querySelector<HTMLInputElement>("input")!.value,
+    ).toBe(tomorrow);
+    expect(
+      modal.contentEl.querySelector<HTMLButtonElement>('button[type="submit"]')!
+        .disabled,
+    ).toBe(false);
   });
 });

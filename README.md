@@ -1,6 +1,6 @@
 # Daymark - Chinese Holiday Calendar
 
-面向每日重要事项的 Obsidian 桌面插件。中国法定节假日和调休上班日离线展示；未完成事项自动顺延，过多顺延的事项进入待办箱。作者：Cynthia Ding。当前版本 0.2.1，最低 Obsidian 1.14.4。
+面向每日重要事项的 Obsidian 桌面插件。中国法定节假日和调休上班日离线展示；未完成事项自动顺延，过多顺延的事项进入待办箱。作者：Cynthia Ding。当前版本 0.2.3，最低 Obsidian 1.7.4。
 
 显示名称已从 Daylane 改为 Daymark，中文称“每日要事”。为兼容既有笔记与配置，插件 ID 为 daymark-chinese-calendar，YAML 属性仍使用 daylane- 前缀，代码块语言仍为 daylane，默认目录仍为 Daylane/Items。GitHub 仓库及本地源码目录为 obsidian-daymark，安装目录为 .obsidian/plugins/daymark-chinese-calendar。
 
@@ -13,7 +13,7 @@ Calendar Plus 启发了重要事项与内嵌日历的使用需求；本项目独
 - Automatic rollover with a cumulative limit and an undated inbox; manual rescheduling through the context menu.
 - An independent focus timer with custom focus and break durations.
 
-Desktop only, tested on Obsidian 1.14.4. Holiday data currently covers mainland China in 2025 and 2026; workday calculations pause when official data for a required year is missing. Install the matching GitHub Release assets in .obsidian/plugins/daymark-chinese-calendar for manual testing.
+Desktop only, with user-confirmed operation on Obsidian 1.7.4 and prior testing on 1.14.4. Holiday data currently covers mainland China in 2025 and 2026; workday calculations pause when official data for a required year is missing. Install the matching GitHub Release assets in .obsidian/plugins/daymark-chinese-calendar for manual testing.
 
 ## Privacy and data / 隐私与数据
 
@@ -30,6 +30,8 @@ Automatic rollover is enabled by default and changes past open items' dates and 
 插件加载后默认将日历放入左侧文件列表所在的标签组，不拆分上下侧栏，不抢占正在编辑的文档。侧栏、独立页面与 daylane 代码块共用同一月历：周一开始、红点表示事项、休／班角标表示法定节假日和调休工作日。点击日期查看下方事项，双击日期或点击“添加重要事项”只需输入名称。勾选完成，点击标题打开笔记，× 删除。已完成事项仍显示。
 
 新文件直接存放在配置目录，标题为二级标题。重名使用“名称 1.md”“名称 2.md”，不覆盖已有普通文档。列表右键可指定日期、移到下一自然日／工作日、放入待办箱和删除。默认删除整篇笔记并使用宿主回收机制；实验性设置可改成只删除四项专属 YAML 属性。
+
+手动指定日期使用直接可点击的月历，支持切换月份、“今天／明天／一周后”快捷选择和 YYYY-MM-DD 文本输入。浏览与选择只修改弹窗草稿，确认后才保存；过去日期不可选择，保存失败时保留输入供重试。
 
 ## YAML 数据
 
@@ -88,6 +90,6 @@ month 也可为 YYYY-MM。interactive: false 禁止创建、完成、删除与�
 
 ## 本地安装与开发
 
-运行 npm install、npm run test:run、npm run package。将 dist/daymark-chinese-calendar 的 main.js、manifest.json、styles.css 复制到目标库 .obsidian/plugins/daymark-chinese-calendar，保留已有 data.json，然后重新加载插件。发行压缩包为 dist/daymark-chinese-calendar-0.2.2.zip。发布准备与本地验收不等于已通过社区市场审核；目录状态以官方页面为准。
+运行 npm install、npm run test:run、npm run package。将 dist/daymark-chinese-calendar 的 main.js、manifest.json、styles.css 复制到目标库 .obsidian/plugins/daymark-chinese-calendar，保留已有 data.json，然后重新加载插件。发行压缩包为 dist/daymark-chinese-calendar-0.2.3.zip。发布准备与本地验收不等于已通过社区市场审核；目录状态以官方页面为准。
 
 [改造方案](docs/change-plan.md) · [验证报告](docs/verification-report.md) · [宿主验收清单](docs/manual-verification.md)
