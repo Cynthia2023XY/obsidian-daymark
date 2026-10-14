@@ -1,0 +1,23 @@
+src/modals.ts
+  s_8c08e9c426556b::t_18a549304632f0 2-8,10,95,106,109-111,119-134,136-162,164-185,187-215,217,229,237-241
+tests/modals-test.ts
+  s_8c08e9c426556b::t_04bb2a7adf6a42 5,80-90,92-110,112-124,126-129,133-134,136-140,142-143,145-149,151-152,154-156,158
+styles.css
+  s_8c08e9c426556b::t_18a549304632f0 330-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "c92ce4b64941937b7d933c3267b551d8af34e3f8",
+  "prompts": {},
+  "sessions": {
+    "s_8c08e9c426556b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1389e-7e33-7752-8a48-7aa61a3716fd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "dingxinyi.2 <dingxinyi.2@jd.com>"
+    }
+  }
+}
