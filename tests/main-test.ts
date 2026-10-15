@@ -194,7 +194,7 @@ describe("单日插件宿主", () => {
       clearTimeout.mockRestore();
     }
   });
-  it("监听先于首扫，命令严格五条且默认恢复侧栏不重复", async () => {
+  it("监听先于首扫，命令含工作日志关联入口且默认恢复侧栏不重复", async () => {
     // 取得当前测试或业务边界，核对完整操作链
     const { plugin, mock, order, ready, leaves, expand } = pluginFixture();
     await plugin.onload();
@@ -205,6 +205,7 @@ describe("单日插件宿主", () => {
       "roll-to-today",
       "complete-today",
       "open-inbox",
+      "insert-today-todo-links",
     ]);
     ready();
     await vi.waitFor(() =>
@@ -308,6 +309,67 @@ describe("单日插件宿主", () => {
       "自动流转未完成待办",
     ])
       expect(settings.containerEl.textContent).not.toContain(label);
+    unload(plugin, mock);
+  });
+  it("工作日志命令只插入本地今日未完成事项的完整路径双链", async () => {
+    // 使用真实事项仓库，模拟宿主编辑器的光标插入边界
+    const { plugin, mock } = pluginFixture();
+    await plugin.onload();
+    await plugin.repository.schedule(
+      plugin.repository.items()[0],
+      "2026-10-13",
+    );
+    await plugin.repository.create({ title: "今日乙", date: "2026-10-12" });
+    // 高亮事项与普通事项应一并关联到日志
+    const highlighted = await plugin.repository.create({
+      title: "今日甲",
+      date: "2026-10-12",
+    });
+    await plugin.repository.highlight(highlighted, true);
+    await plugin.repository.create({
+      title: "已完成",
+      date: "2026-10-12",
+      status: "completed",
+    });
+    await plugin.repository.create({ title: "未安排" });
+    await plugin.repository.create({ title: "昨天", date: "2026-10-11" });
+    // 捕获命令使用的插入文本，不触碰系统剪贴板
+    const editor = { replaceSelection: vi.fn() };
+    // 通过注册命令触发生产回调，而非直接调用内部实现
+    const command = mock.registeredCommands.find(
+      (entry) => entry.id === "insert-today-todo-links",
+    )!;
+    expect(command.callback).toBeUndefined();
+    command.editorCallback!(editor);
+    expect(editor.replaceSelection).toHaveBeenCalledExactlyOnceWith(
+      "- [[Daylane/Items/今日甲]]\n- [[Daylane/Items/今日乙]]",
+    );
+    // 跨午夜再次执行应使用新日期，而非插件加载时的日期
+    vi.setSystemTime(new Date(2026, 9, 13, 0, 1));
+    editor.replaceSelection.mockClear();
+    command.editorCallback!(editor);
+    expect(editor.replaceSelection).toHaveBeenCalledExactlyOnceWith(
+      "- [[Daylane/Items/事项]]",
+    );
+    unload(plugin, mock);
+  });
+  it("无今日待办或扫描未完成时提示且不修改工作日志", async () => {
+    // 空集合不能用空字符串替换用户正在选择的日志内容
+    const { plugin, mock } = pluginFixture();
+    await plugin.onload();
+    await plugin.repository.schedule(plugin.repository.items()[0]);
+    // 保存编辑器调用，确认失败前置条件不会造成内容丢失
+    const editor = { replaceSelection: vi.fn() };
+    // 编辑器专用命令无需查找或切换当前日历视图
+    const command = mock.registeredCommands.find(
+      (entry) => entry.id === "insert-today-todo-links",
+    )!;
+    command.editorCallback!(editor);
+    expect(notices).toContain("今天没有未完成的待办事项");
+    plugin.repository.progress.active = true;
+    command.editorCallback!(editor);
+    expect(notices).toContain("事项正在扫描，请稍后重试");
+    expect(editor.replaceSelection).not.toHaveBeenCalled();
     unload(plugin, mock);
   });
   it("右键高亮和取消高亮更新笔记并切换菜单文案", async () => {

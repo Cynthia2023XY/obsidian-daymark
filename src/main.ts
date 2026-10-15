@@ -502,7 +502,7 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
     if (patch.rolloverMode !== undefined || patch.maxRollovers !== undefined)
       await this.checkRollover();
   }
-  /** 常用命令严格保留五条 */
+  /** 注册日历操作及工作日志关联命令 */
   private commands(): void {
     // 统一注册宿主命令及异常出口，不增加业务测试分支
     const command = (
@@ -529,6 +529,29 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
     command("open-inbox", "查看待办箱", () =>
       this.openCalendar(true, true, true),
     );
+    this.addCommand({
+      id: "insert-today-todo-links",
+      name: "插入今日待办双链",
+      editorCallback: (editor) => {
+        if (this.repository.progress.active) {
+          this.notify("事项正在扫描，请稍后重试");
+          return;
+        }
+        // 按执行时的本地日期筛选，不受日历当前选中日期影响
+        const today = localDay();
+        // 使用库内完整路径，避免不同目录的同名事项关联到错误笔记
+        const links = this.repository
+          .items()
+          .filter((item) => item.date === today && item.status === "open")
+          .sort((left, right) => left.path.localeCompare(right.path, "zh-CN"))
+          .map((item) => `- [[${item.path.replace(/\.md$/i, "")}]]`);
+        if (!links.length) {
+          this.notify("今天没有未完成的待办事项");
+          return;
+        }
+        editor.replaceSelection(links.join("\n"));
+      },
+    });
   }
   /** 停止插件资源，保留宿主管理的面板位置供重新启用恢复 */
   onunload(): void {
