@@ -311,7 +311,7 @@ describe("单日插件宿主", () => {
       expect(settings.containerEl.textContent).not.toContain(label);
     unload(plugin, mock);
   });
-  it("工作日志命令只插入本地今日未完成事项的完整路径双链", async () => {
+  it("工作日志按完成状态分组插入当天所有事项，双链只显示标题", async () => {
     // 使用真实事项仓库，模拟宿主编辑器的光标插入边界
     const { plugin, mock } = pluginFixture();
     await plugin.onload();
@@ -342,14 +342,28 @@ describe("单日插件宿主", () => {
     expect(command.callback).toBeUndefined();
     command.editorCallback!(editor);
     expect(editor.replaceSelection).toHaveBeenCalledExactlyOnceWith(
-      "- [[Daylane/Items/今日甲]]\n- [[Daylane/Items/今日乙]]",
+      "**已完成**\n- [[Daylane/Items/已完成|已完成]]\n\n**未完成**\n- [[Daylane/Items/今日甲|今日甲]]\n- [[Daylane/Items/今日乙|今日乙]]",
+    );
+    // 全部完成时仍可插入，未完成空组不产生多余的短横线
+    await plugin.repository.status(
+      plugin.repository.items().find((item) => item.title === "今日甲")!,
+      "completed",
+    );
+    await plugin.repository.status(
+      plugin.repository.items().find((item) => item.title === "今日乙")!,
+      "completed",
+    );
+    editor.replaceSelection.mockClear();
+    command.editorCallback!(editor);
+    expect(editor.replaceSelection).toHaveBeenCalledExactlyOnceWith(
+      "**已完成**\n- [[Daylane/Items/今日甲|今日甲]]\n- [[Daylane/Items/今日乙|今日乙]]\n- [[Daylane/Items/已完成|已完成]]\n\n**未完成**\n无",
     );
     // 跨午夜再次执行应使用新日期，而非插件加载时的日期
     vi.setSystemTime(new Date(2026, 9, 13, 0, 1));
     editor.replaceSelection.mockClear();
     command.editorCallback!(editor);
     expect(editor.replaceSelection).toHaveBeenCalledExactlyOnceWith(
-      "- [[Daylane/Items/事项]]",
+      "**已完成**\n无\n\n**未完成**\n- [[Daylane/Items/事项|事项]]",
     );
     unload(plugin, mock);
   });
@@ -365,7 +379,7 @@ describe("单日插件宿主", () => {
       (entry) => entry.id === "insert-today-todo-links",
     )!;
     command.editorCallback!(editor);
-    expect(notices).toContain("今天没有未完成的待办事项");
+    expect(notices).toContain("今天没有待办事项");
     plugin.repository.progress.active = true;
     command.editorCallback!(editor);
     expect(notices).toContain("事项正在扫描，请稍后重试");

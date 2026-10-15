@@ -539,17 +539,32 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
         }
         // 按执行时的本地日期筛选，不受日历当前选中日期影响
         const today = localDay();
-        // 使用库内完整路径，避免不同目录的同名事项关联到错误笔记
-        const links = this.repository
+        // 当天已完成和未完成事项均参与，组内按路径保持稳定顺序
+        const items = this.repository
           .items()
-          .filter((item) => item.date === today && item.status === "open")
-          .sort((left, right) => left.path.localeCompare(right.path, "zh-CN"))
-          .map((item) => `- [[${item.path.replace(/\.md$/i, "")}]]`);
-        if (!links.length) {
-          this.notify("今天没有未完成的待办事项");
+          .filter((item) => item.date === today)
+          .sort((left, right) => left.path.localeCompare(right.path, "zh-CN"));
+        if (!items.length) {
+          this.notify("今天没有待办事项");
           return;
         }
-        editor.replaceSelection(links.join("\n"));
+        // 用显示别名隐藏路径，保留完整链接目标避免同名误链
+        const sections = (
+          [
+            ["completed", "已完成"],
+            ["open", "未完成"],
+          ] as const
+        ).map(([status, label]) => {
+          // 每个分组只输出实际事项，空组显示无而不生成空列表项
+          const links = items
+            .filter((item) => item.status === status)
+            .map(
+              (item) =>
+                `- [[${item.path.replace(/\.md$/i, "")}|${item.title}]]`,
+            );
+          return `**${label}**\n${links.join("\n") || "无"}`;
+        });
+        editor.replaceSelection(sections.join("\n\n"));
       },
     });
   }
