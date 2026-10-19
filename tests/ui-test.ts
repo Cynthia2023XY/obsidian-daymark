@@ -16,6 +16,115 @@ afterEach(() => {
 });
 /** 参考样式的交互契约，不使用视觉快照模拟成功 */
 describe("红点月历和单日事项列表", () => {
+  it("保留宿主滚动类，完成项折叠后仍可展开且新增入口可用", async () => {
+    // 真实仓库承载当天未完成与已完成事项
+    const host = await hostFixture();
+    await host.repository.schedule(host.repository.items()[0], "2026-10-12");
+    await host.repository.create({
+      title: "已完成重点",
+      date: "2026-10-12",
+      status: "completed",
+    });
+    // 宿主负责通过 view-content 设置可滚动的内容区
+    const root = document.createElement("div");
+    root.className = "view-content custom-host-class";
+    // 挂载后每次刷新都必须保留宿主样式
+    const panel = new CalendarPanel(root, host, { compact: true });
+    expect(root.classList.contains("view-content")).toBe(true);
+    expect(root.classList.contains("custom-host-class")).toBe(true);
+    expect(root.querySelector(".daylane-completed-group")).toBeNull();
+    expect(root.querySelector(".daylane-inbox-link")?.parentElement).toBe(
+      root.querySelector(".daylane-completed-toggle")?.parentElement,
+    );
+    (
+      root.querySelector(".daylane-completed-toggle") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(root.querySelector(".daylane-completed-group")).not.toBeNull(),
+    );
+    // 原生 details 的关闭状态隐藏完成行，未完成行留在普通列表
+    const group = root.querySelector(
+      ".daylane-completed-group",
+    ) as HTMLDetailsElement;
+    expect(group.open).toBe(false);
+    expect(group.querySelector("summary")?.textContent).toBe("已完成（1）");
+    expect(group.querySelectorAll(".is-completed")).toHaveLength(1);
+    expect(
+      root.querySelector(".daylane-items")?.querySelectorAll(".daylane-item"),
+    ).toHaveLength(1);
+    expect(root.classList.contains("view-content")).toBe(true);
+    (root.querySelector(".daylane-add") as HTMLButtonElement).click();
+    await vi.waitFor(() =>
+      expect(host.create).toHaveBeenCalledWith("2026-10-12"),
+    );
+    // 数据刷新沿用折叠模式，并更新完成事项的数量
+    await host.repository.status(
+      host.repository.items().find((item) => item.status === "open")!,
+      "completed",
+    );
+    expect(
+      root.querySelector(".daylane-completed-group summary")?.textContent,
+    ).toBe("已完成（2）");
+    (
+      root.querySelector(".daylane-completed-toggle") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(root.querySelector(".daylane-completed-group")).toBeNull(),
+    );
+    expect(root.querySelectorAll(".daylane-item")).toHaveLength(2);
+    panel.dispose();
+  });
+  it("折叠模式在待办箱中沿用，其他实例和只读日历独立", async () => {
+    // 无日期事项用于验证待办箱同样支持折叠
+    const host = await hostFixture();
+    await host.repository.create({
+      title: "完成的入箱项",
+      status: "completed",
+    });
+    // 首个日历切换模式，第二个只读实例不受影响
+    const root = document.createElement("div");
+    // 只读仅限制写入，不限制折叠查看
+    const readonlyRoot = document.createElement("div");
+    // 交互日历实例保存自己的折叠状态
+    const panel = new CalendarPanel(root, host);
+    // 独立只读实例默认展开
+    const readonlyPanel = new CalendarPanel(readonlyRoot, host, {
+      interactive: false,
+      inbox: true,
+    });
+    (
+      root.querySelector(".daylane-completed-toggle") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(
+        root
+          .querySelector(".daylane-completed-toggle")
+          ?.getAttribute("aria-pressed"),
+      ).toBe("true"),
+    );
+    expect(root.querySelector(".daylane-completed-group")).toBeNull();
+    (root.querySelector(".daylane-inbox-link") as HTMLButtonElement).click();
+    await vi.waitFor(() =>
+      expect(
+        root.querySelector(".daylane-completed-group summary")?.textContent,
+      ).toBe("已完成（1）"),
+    );
+    expect(readonlyRoot.querySelector(".daylane-completed-group")).toBeNull();
+    expect(readonlyRoot.querySelector(".daylane-add")).toBeNull();
+    (
+      readonlyRoot.querySelector(
+        ".daylane-completed-toggle",
+      ) as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(
+        readonlyRoot.querySelector(".daylane-completed-group"),
+      ).not.toBeNull(),
+    );
+    panel.dispose();
+    readonlyPanel.dispose();
+  });
+
   it("高亮行与蓝点同步更新，同日多条高亮只显示一个蓝点", async () => {
     // 当前日期同时安排普通事项与高亮事项
     const host = await hostFixture();

@@ -9,6 +9,11 @@
   color: var(--text-normal);
   font-family: var(--font-interface);
 }
+/* 宿主内容区保留滚动；内嵌日历仍随笔记自然排版。 */
+.daylane-root.view-content {
+  min-height: 0;
+  overflow-y: auto;
+}
 /* 日历按钮高于宿主通用 button 规则，保留原生语义与键盘操作。 */
 .daylane-root button {
   font-family: inherit;
@@ -294,10 +299,25 @@
 .daylane-root button.daylane-add {
   font-size: clamp(14px, 3.9cqi, 27px);
 }
+.daylane-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 15px;
+}
+.daylane-completed-group {
+  margin-bottom: 20px;
+}
+.daylane-completed-group > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+.daylane-list-actions button.daylane-completed-toggle,
 .daylane-root button.daylane-inbox-link {
   font-size: clamp(11px, 2.5cqi, 16px);
   color: var(--text-muted);
-  margin-top: 15px;
 }
 .daylane-muted,
 .daylane-warning {

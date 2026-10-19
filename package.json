@@ -1,6 +1,6 @@
 {
   "name": "obsidian-daymark",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Chinese holiday calendars, Markdown events, rolling to-dos and an independent focus timer.",
   "private": true,
   "license": "MIT",

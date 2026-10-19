@@ -91,6 +91,8 @@ export class CalendarPanel {
   private selected = localDay();
   /** 日历与待办箱切换，不额外打开设置弹窗 */
   private inboxPage: boolean;
+  /** 当前视图是否把已完成事项集中收起，不修改笔记状态 */
+  private completedCollapsed = false;
   /** 事项订阅卸载函数 */
   private unsubscribe: () => void;
   /** 下方列表区域 */
@@ -109,8 +111,11 @@ export class CalendarPanel {
   /** 保留日期格、红点和休班角标，不展示排期卡片 */
   render(): void {
     this.root.replaceChildren();
-    this.root.className =
-      "daylane-root" + (this.options.compact ? " daylane-compact" : "");
+    this.root.classList.add("daylane-root");
+    this.root.classList.toggle(
+      "daylane-compact",
+      Boolean(this.options.compact),
+    );
     if (this.host.repository.progress.active) {
       element(
         this.root,
@@ -123,8 +128,10 @@ export class CalendarPanel {
       );
     }
     if (this.inboxPage) {
+      // 待办箱同样允许收起完成事项，返回入口与开关并排
+      const actions = element(this.root, "div", "daylane-list-actions");
       button(
-        this.root,
+        actions,
         "‹ 返回日历",
         () => {
           this.inboxPage = false;
@@ -133,6 +140,7 @@ export class CalendarPanel {
         this.host.notify,
         "daylane-text-button",
       );
+      this.renderCompletedToggle(actions);
       this.detail = element(this.root, "section", "daylane-detail");
       this.renderList(this.detail, "待办箱", this.host.repository.inbox());
       if (this.options.interactive !== false)
@@ -328,8 +336,10 @@ export class CalendarPanel {
     const inbox = this.host.repository
       .inbox()
       .filter((item) => item.status === "open").length;
+    // 底部入口随宽度换行，避免窄侧栏横向截断
+    const actions = element(this.detail, "div", "daylane-list-actions");
     button(
-      this.detail,
+      actions,
       "查看待办箱（" + inbox + "）",
       () => {
         this.inboxPage = true;
@@ -338,6 +348,22 @@ export class CalendarPanel {
       this.host.notify,
       "daylane-inbox-link",
     );
+    this.renderCompletedToggle(actions);
+  }
+  /** 视图级折叠开关与查看待办箱入口并排，不影响其他日历实例 */
+  private renderCompletedToggle(parent: HTMLElement): void {
+    // 每次切换只更新展示方式，事项状态与统计数量保持原样
+    const toggle = button(
+      parent,
+      this.completedCollapsed ? "展开已完成" : "折叠已完成",
+      () => {
+        this.completedCollapsed = !this.completedCollapsed;
+        this.render();
+      },
+      this.host.notify,
+      "daylane-text-button daylane-completed-toggle",
+    );
+    toggle.setAttribute("aria-pressed", String(this.completedCollapsed));
   }
   /** 每行只有复选框、标题与删除，手动流转放右键 */
   private renderList(parent: HTMLElement, title: string, items: Item[]): void {
@@ -347,11 +373,23 @@ export class CalendarPanel {
     element(heading, "span", "", items.length + " 项重要事项");
     // 保存当前处理阶段的事实结果，供后续校验与展示
     const list = element(parent, "ul", "daylane-items");
+    // 折叠时为完成项提供可单独展开的原生分组，未完成项继续直接显示
+    const completedCount = items.filter(
+      (item) => item.status === "completed",
+    ).length;
+    // 空集合不显示空的折叠分组
+    let completedList: HTMLElement | null = null;
+    if (this.completedCollapsed && completedCount) {
+      // 原生 details 支持鼠标和键盘展开，不需要修改完成状态
+      const group = element(parent, "details", "daylane-completed-group");
+      element(group, "summary", "", `已完成（${completedCount}）`);
+      completedList = element(group, "ul", "daylane-items");
+    }
     // 逐项处理当前业务集合，保留每项自己的状态与结果
     for (const item of items) {
       // 呈现单条事项详情与明确操作入口
       const row = element(
-        list,
+        item.status === "completed" && completedList ? completedList : list,
         "li",
         "daylane-item" + (item.status === "completed" ? " is-completed" : ""),
       );
