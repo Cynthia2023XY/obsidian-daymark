@@ -1,0 +1,33 @@
+README.md
+  s_cab306bf56dab1::t_d7380889373cd2 3,30
+manifest.json
+  s_cab306bf56dab1::t_f421a9b583ebd9 4
+package-lock.json
+  s_cab306bf56dab1::t_181375247d38da 3,9
+package.json
+  s_cab306bf56dab1::t_580c805f9d06b0 3
+src/ui.ts
+  s_cab306bf56dab1::t_c8066817e378f3 94-95,114-118,131-132,134,143,339-340,342,351-366,376-387,392
+styles.css
+  s_cab306bf56dab1::t_fb14c228c29041 12-16,302-317
+tests/ui-test.ts
+  s_cab306bf56dab1::t_f95063299b20f7 19-127
+versions.json
+  s_cab306bf56dab1::t_507c76ebd5938a 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "668faa5c73a9bc4af4f8c870d4960184ceff0b6c",
+  "prompts": {},
+  "sessions": {
+    "s_cab306bf56dab1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13a70-f8c1-7823-8e03-1e6aec8e828d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "dingxinyi.2 <dingxinyi.2@jd.com>"
+    }
+  }
+}
