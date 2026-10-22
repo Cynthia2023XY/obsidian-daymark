@@ -527,3 +527,120 @@
     border-radius: 5px;
   }
 }
+
+/* 常驻迷你条独立于侧栏布局，层级低于宿主弹窗与菜单 */
+.daylane-floating-timer {
+  position: fixed;
+  z-index: 30;
+  width: 216px;
+  max-width: calc(100vw - 16px);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 16%);
+  overflow: hidden;
+}
+.daylane-floating-timer[hidden],
+.daylane-floating-detail[hidden],
+.daylane-status[hidden] {
+  display: none;
+}
+.daylane-floating-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 5px;
+}
+.daylane-floating-handle {
+  padding: 6px 2px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  color: var(--text-faint);
+}
+.daylane-floating-handle:active {
+  cursor: grabbing;
+}
+.daylane-floating-toggle,
+.daylane-status-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+}
+.daylane-floating-toggle svg,
+.daylane-status-toggle svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+.daylane-floating-bar button,
+.daylane-status button {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: inherit;
+  height: 28px;
+  padding: 2px 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.daylane-floating-bar button:hover,
+.daylane-status button:hover {
+  background: var(--background-modifier-hover);
+}
+.daylane-floating-bar .daylane-floating-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.daylane-floating-tomato {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.daylane-floating-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.daylane-floating-timer.is-expanded {
+  width: 320px;
+}
+.daylane-floating-detail {
+  border-top: 1px solid var(--background-modifier-border);
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+.daylane-floating-detail.daylane-timer {
+  padding: 14px;
+}
+.daylane-floating-detail h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.daylane-floating-detail .daylane-timer-display {
+  font-size: 44px;
+}
+.daylane-floating-detail .daylane-timer-controls {
+  gap: 8px;
+}
+.daylane-floating-detail .daylane-timer-controls label {
+  flex: 1 1 100%;
+  justify-content: space-between;
+}
+.daylane-status {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}

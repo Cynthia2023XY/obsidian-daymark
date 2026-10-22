@@ -129,6 +129,8 @@ function pluginFixture(): {
         storage.rename(file.path, target),
     },
     workspace: {
+      // 主窗口悬浮控件挂载到工作区，不创建侧栏叶子
+      containerEl: document.body,
       getLeaf: () => newLeaf(),
       getLeftLeaf: vi.fn((split = false) =>
         newLeaf(split ? "left-bottom" : "left"),
@@ -167,6 +169,195 @@ function unload(plugin: DaymarkPlugin, mock: Plugin): void {
 }
 /** 常用命令、默认侧栏、设置卡片和右键行为 */
 describe("单日插件宿主", () => {
+  it("宿主延迟加载样式后按实际尺寸恢复位置，卸载释放尺寸监听", async () => {
+    // 模拟 Obsidian 在插件加载完成后才注入主题和插件样式
+    let resized = (): void => undefined;
+    // 确认卸载会释放浏览器观察器
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        // 保留真实组件注册的尺寸变化回调
+        constructor(callback: () => void) {
+          resized = callback;
+        }
+        // 不在测试里依赖浏览器排版引擎
+        observe = vi.fn();
+        // 由生命周期负责释放监听
+        disconnect = disconnect;
+      },
+    );
+    // 保存到右下边缘的位置最容易受加载尺寸变化影响
+    const { plugin, mock } = pluginFixture();
+    mock.data = { settingsVersion: 2, timerFloatingX: 1, timerFloatingY: 1 };
+    try {
+      await plugin.onload();
+      // 注入样式生效后的实际尺寸并触发浏览器回调
+      const floating = document.querySelector(
+        ".daylane-floating-timer",
+      ) as HTMLElement;
+      Object.defineProperty(floating, "offsetWidth", { value: 320 });
+      Object.defineProperty(floating, "offsetHeight", { value: 200 });
+      resized();
+      expect(parseFloat(floating.style.left)).toBe(innerWidth - 328);
+      expect(parseFloat(floating.style.top)).toBe(innerHeight - 240);
+    } finally {
+      unload(plugin, mock);
+      vi.unstubAllGlobals();
+    }
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+  it("悬浮条常驻且不创建侧栏，收起后状态栏继续计时并可恢复", async () => {
+    // 使用生产加载和持久化链路，检查多个入口共享同一计时
+    const { plugin, mock } = pluginFixture();
+    await plugin.onload();
+    // 定位默认出现的迷你条与宿主状态栏入口
+    const floating = document.querySelector(
+      ".daylane-floating-timer",
+    ) as HTMLElement;
+    // 状态栏由宿主托管，测试替身不挂载到文档
+    const status = (plugin as unknown as { statusEl: HTMLElement }).statusEl;
+    expect(floating.hidden).toBe(false);
+    expect(plugin.app.workspace.getRightLeaf).not.toHaveBeenCalled();
+    (
+      floating.querySelector(".daylane-floating-toggle") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(plugin.timer.snapshot().status).toBe("running"),
+    );
+    vi.setSystemTime(Date.now() + 60_001);
+    plugin.timer.tick();
+    expect(floating.textContent).toContain("24:00");
+    expect(status.textContent).toContain("24:00");
+    (
+      floating.querySelector(".daylane-floating-minimize") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() => expect(floating.hidden).toBe(true));
+    expect(mock.data).toMatchObject({ timerFloatingHidden: true });
+    vi.setSystemTime(Date.now() + 60_000);
+    plugin.timer.tick();
+    expect(status.textContent).toContain("23:00");
+    (
+      status.querySelector(".daylane-status-toggle") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(plugin.timer.snapshot().status).toBe("paused"),
+    );
+    (
+      status.querySelector(".daylane-status-label") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() => expect(floating.hidden).toBe(false));
+    expect(floating.textContent).toContain("暂停");
+    await plugin.openTimer();
+    expect(plugin.app.workspace.getRightLeaf).not.toHaveBeenCalled();
+    unload(plugin, mock);
+    expect(document.querySelector(".daylane-floating-timer")).toBeNull();
+    expect(status.childElementCount).toBe(0);
+  });
+  it("展开控制保留尚未提交的时长，完成后等待手动开始下一轮", async () => {
+    // 展开面板复用真实控件，保证每秒刷新不覆盖正在编辑的输入
+    const { plugin, mock } = pluginFixture();
+    await plugin.onload();
+    // 点击时间即可展开，按 Escape 返回迷你条
+    const label = document.querySelector(
+      ".daylane-floating-label",
+    ) as HTMLButtonElement;
+    label.click();
+    await vi.waitFor(() =>
+      expect(label.getAttribute("aria-expanded")).toBe("true"),
+    );
+    // 本轮时长修改无需影响默认设置
+    const input = document.querySelector(
+      ".daylane-floating-detail input",
+    ) as HTMLInputElement;
+    input.value = "37";
+    plugin.timer.changes.emit();
+    expect(input.value).toBe("37");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(label.getAttribute("aria-expanded")).toBe("false");
+    expect(plugin.timer.snapshot().status).toBe("idle");
+    plugin.timer.select("focus", 1);
+    plugin.timer.start();
+    vi.setSystemTime(Date.now() + 60_001);
+    plugin.timer.tick();
+    expect(label.textContent).toContain("完成");
+    plugin.timer.tick();
+    expect(plugin.timer.snapshot().status).toBe("finished");
+    (
+      document.querySelector(".daylane-floating-toggle") as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(plugin.timer.snapshot().status).toBe("running"),
+    );
+    expect(plugin.timer.snapshot().minutes).toBe(25);
+    await plugin.configure({ timerEnabled: false });
+    expect(
+      (document.querySelector(".daylane-floating-timer") as HTMLElement).hidden,
+    ).toBe(true);
+    await plugin.configure({ timerEnabled: true });
+    expect(
+      (document.querySelector(".daylane-floating-timer") as HTMLElement).hidden,
+    ).toBe(false);
+    unload(plugin, mock);
+  });
+  it("拖动在放下时保存比例位置，重载和窗口缩小后仍在屏幕内", async () => {
+    // 通过指针事件触发实际拖动路径，而非直接改内部坐标
+    const { plugin, mock } = pluginFixture();
+    await plugin.onload();
+    // 测试环境采用固定迷你条尺寸，窗口默认空间可直接计算
+    const floating = document.querySelector(
+      ".daylane-floating-timer",
+    ) as HTMLElement;
+    // 将鼠标事件补齐指针身份，兼容测试环境的 PointerEvent 支持差异
+    const pointer = (name: string, x: number, y: number): Event => {
+      // 统一主指针事件供窗口级监听识别
+      const event = new MouseEvent(name, { clientX: x, clientY: y, button: 0 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      return event;
+    };
+    floating
+      .querySelector(".daylane-floating-handle")!
+      .dispatchEvent(pointer("pointerdown", 5, 5));
+    window.dispatchEvent(pointer("pointermove", 400, 240));
+    expect(mock.data).toBeNull();
+    window.dispatchEvent(pointer("pointerup", 400, 240));
+    await vi.waitFor(() =>
+      expect(mock.data).toMatchObject({ timerFloatingHidden: false }),
+    );
+    // 保存值应为合法的相对坐标
+    const saved = structuredClone(mock.data) as {
+      timerFloatingX: number;
+      timerFloatingY: number;
+    };
+    expect(saved.timerFloatingX).toBeGreaterThan(0);
+    expect(saved.timerFloatingX).toBeLessThanOrEqual(1);
+    expect(saved.timerFloatingY).toBeGreaterThan(0);
+    // 重载沿用保存位置和收起偏好
+    const left = floating.style.left;
+    unload(plugin, mock);
+    // 新插件实例模拟 Obsidian 重载后的设置读取
+    const next = pluginFixture();
+    next.mock.data = saved;
+    await next.plugin.onload();
+    // 只应挂载一份悬浮条
+    const restored = document.querySelector(
+      ".daylane-floating-timer",
+    ) as HTMLElement;
+    expect(document.querySelectorAll(".daylane-floating-timer")).toHaveLength(
+      1,
+    );
+    expect(restored.style.left).toBe(left);
+    vi.stubGlobal("innerWidth", 400);
+    vi.stubGlobal("innerHeight", 300);
+    try {
+      window.dispatchEvent(new Event("resize"));
+      expect(parseFloat(restored.style.left)).toBeLessThanOrEqual(184);
+      expect(parseFloat(restored.style.top)).toBeLessThanOrEqual(224);
+    } finally {
+      vi.unstubAllGlobals();
+      unload(next.plugin, next.mock);
+    }
+  });
   it("卸载保留日历与番茄钟面板，并停止索引和午夜定时资源", async () => {
     // 使用生产生命周期验证用户布局保留与后台资源清理
     const { plugin, mock, leaves } = pluginFixture();

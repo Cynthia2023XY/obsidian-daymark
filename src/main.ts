@@ -19,6 +19,7 @@ import {
   safeFolder,
 } from "./domain";
 import { HolidayService } from "./holidays";
+import { FloatingTimer } from "./floating-timer";
 import { DateModal, ImportModal, ItemModal } from "./modals";
 import { ObsidianVault } from "./obsidian-adapter";
 import { ItemRepository } from "./repository";
@@ -30,7 +31,6 @@ import {
   CalendarPanel,
   element,
   TimerPanel,
-  timerLabel,
   UiHost,
 } from "./ui";
 
@@ -56,6 +56,8 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
   private audio: AudioContext | null = null;
   /** 桌面计时入口 */
   private statusEl: HTMLElement | null = null;
+  /** 主窗口常驻迷你番茄钟，收起后由状态栏恢复 */
+  private floatingTimer: FloatingTimer | null = null;
   /** 本地午夜调度 */
   private midnight: number | null = null;
   /** 记录前次本地日期，补偿睡眠回调 */
@@ -95,6 +97,20 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
       this.preferences.folder = DEFAULTS.folder;
       this.notify("事项目录无效，已恢复默认目录");
     }
+    // 拒绝损坏的位置数据，确保悬浮条始终能回到屏幕内
+    for (const key of ["timerFloatingX", "timerFloatingY"] as const) {
+      // 保存的坐标使用零到一之间的比例
+      const value = this.preferences[key];
+      if (
+        typeof value !== "number" ||
+        !Number.isFinite(value) ||
+        value < 0 ||
+        value > 1
+      )
+        this.preferences[key] = null;
+    }
+    this.preferences.timerFloatingHidden =
+      this.preferences.timerFloatingHidden === true;
     // 逐项处理当前业务集合，保留每项自己的状态与结果
     for (const key of ["focusMinutes", "breakMinutes"] as const)
       if (!validMinutes(this.preferences[key]))
@@ -173,17 +189,18 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
     this.addRibbonIcon("calendar-days", "打开侧栏日历", () => {
       void this.openCalendar(true).catch((error) => this.notify(String(error)));
     });
-    this.addRibbonIcon("timer", "打开独立番茄钟", () => {
+    this.addRibbonIcon("timer", "显示迷你番茄钟", () => {
       void this.openTimer().catch((error) => this.notify(String(error)));
     });
     this.addSettingTab(new DaymarkSettings(this));
     this.commands();
     this.statusEl = this.addStatusBarItem();
     this.statusEl.classList.add("daylane-status");
-    this.registerDomEvent(this.statusEl, "click", () => {
-      void this.openTimer().catch((error) => this.notify(String(error)));
-    });
-    this.register(this.timer.changes.subscribe(() => this.updateStatus()));
+    this.floatingTimer = new FloatingTimer(
+      this.app.workspace.containerEl,
+      this.statusEl,
+      this,
+    );
     this.registerInterval(
       window.setInterval(() => {
         this.timer.tick();
@@ -206,7 +223,6 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
       void this.checkRollover();
     });
     await this.repository.scan();
-    this.updateStatus();
     this.scheduleMidnight();
     this.app.workspace.onLayoutReady(() => {
       if (this.stopped) return;
@@ -356,19 +372,13 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
     if (focus) await this.app.workspace.revealLeaf(leaf);
     else if (sidebar) this.app.workspace.leftSplit.expand();
   }
-  /** 独立番茄钟由图标及状态栏进入，不占常用命令 */
+  /** 图标与状态栏恢复迷你条，不再新建右侧分区 */
   async openTimer(): Promise<void> {
     if (!this.preferences.timerEnabled) {
       this.notify("请在设置中启用独立番茄钟");
       return;
     }
-    // 取得当前工作区目标页签，承载独立视图
-    const leaf =
-      this.app.workspace.getLeavesOfType(TIMER_VIEW)[0] ??
-      this.app.workspace.getRightLeaf(true);
-    if (!leaf) throw new Error("无法打开番茄钟");
-    await leaf.setViewState({ type: TIMER_VIEW, active: true });
-    await this.app.workspace.revealLeaf(leaf);
+    await this.floatingTimer?.show();
   }
   /** 用户开始手势提前解锁音频 */
   prepareSound(): void {
@@ -440,19 +450,6 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
       this.repository.changes.emit();
       this.scheduleMidnight();
     }, midnightDelay());
-  }
-  /** 更新独立计时状态栏 */
-  private updateStatus(): void {
-    if (!this.statusEl) return;
-    // 读取当前运行阶段，驱动计时文字与交互状态
-    const state = this.timer.snapshot();
-    this.statusEl.hidden = !this.preferences.timerEnabled;
-    this.statusEl.textContent =
-      "◷ " +
-      (state.mode === "focus" ? "专注" : "休息") +
-      " " +
-      timerLabel(state.seconds) +
-      (state.status === "paused" ? " · 暂停" : "");
   }
   /** 设置校验与保存失败回退，范围切换不搬文档 */
   async configure(patch: Partial<Preferences>): Promise<void> {
@@ -571,6 +568,8 @@ export default class DaymarkPlugin extends Plugin implements UiHost {
   /** 停止插件资源，保留宿主管理的面板位置供重新启用恢复 */
   onunload(): void {
     this.stopped = true;
+    this.floatingTimer?.dispose();
+    this.floatingTimer = null;
     if (this.midnight !== null) window.clearTimeout(this.midnight);
     this.repository?.dispose();
     this.timer?.changes.clear();

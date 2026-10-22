@@ -1,5 +1,16 @@
 import { parse } from "yaml";
 
+/** 模拟宿主线性图标接口，保留按钮节点和交互监听 */
+export function setIcon(element: HTMLElement, icon: string): void {
+  // 使用安全的矢量节点模拟宿主绘制，不依赖字体表情符号
+  const svg = element.ownerDocument.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "svg",
+  );
+  svg.setAttribute("data-icon", icon);
+  element.replaceChildren(svg);
+}
+
 /** 记录通知文本，用于检查宿主错误出口 */
 export const notices: string[] = [];
 /** 测试中模拟公开通知接口 */

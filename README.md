@@ -1,6 +1,6 @@
 # Daymark - Chinese Holiday Calendar
 
-面向每日重要事项的 Obsidian 桌面插件。中国法定节假日和调休上班日离线展示；未完成事项自动顺延，过多顺延的事项进入待办箱。作者：Cynthia Ding。当前版本 0.2.7，最低 Obsidian 1.7.4。
+面向每日重要事项的 Obsidian 桌面插件。中国法定节假日和调休上班日离线展示；未完成事项自动顺延，过多顺延的事项进入待办箱。作者：Cynthia Ding。当前版本 0.2.8，最低 Obsidian 1.7.4。
 
 显示名称已从 Daylane 改为 Daymark，中文称“每日要事”。为兼容既有笔记与配置，插件 ID 为 daymark-chinese-calendar，YAML 属性仍使用 daylane- 前缀，代码块语言仍为 daylane，默认目录仍为 Daylane/Items。GitHub 仓库及本地源码目录为 obsidian-daymark，安装目录为 .obsidian/plugins/daymark-chinese-calendar。
 
@@ -11,7 +11,7 @@ Calendar Plus 启发了重要事项与内嵌日历的使用需求；本项目独
 - Daily important items stored as Markdown notes, with Chinese public holidays and adjusted working days.
 - A calendar in the left sidebar, a main-tab calendar, and embedded daylane code blocks.
 - Automatic rollover with a cumulative limit and an undated inbox; manual rescheduling through the context menu.
-- An independent focus timer with custom focus and break durations.
+- An independent focus timer with custom durations, a draggable mini widget, and status bar controls.
 
 Desktop only, with user-confirmed operation on Obsidian 1.7.4 and prior testing on 1.14.4. Holiday data currently covers mainland China in 2025 and 2026; workday calculations pause when official data for a required year is missing. Install the matching GitHub Release assets in .obsidian/plugins/daymark-chinese-calendar for manual testing.
 
@@ -70,7 +70,7 @@ daylane-rollover-count: 0
 
 在工作日志的编辑模式中，将光标放在需要关联事项的位置，通过命令面板执行“插入今日待办双链”。命令按执行时的本地日期选取当天所有事项（包括高亮事项），先“已完成”、后“未完成”分组插入。每行使用 `- [[Daylane/Items/事项名称|事项名称]]`，阅读时只显示标题，完整链接目标避免同名误链。空分组显示“无”，不生成空列表项。其他日期和待办箱中的未安排事项不参与。若选中了文本，插入内容会替换选区；当天无事项或仓库仍在扫描时仅提示，不修改日志。
 
-设置分为“重要事项”和“独立番茄钟”两张卡片。事项默认目录 Daylane/Items、工作日流转；高级选项提供目录限制、流转次数上限及实验性删除方式。番茄钟默认开启，专注 25 分钟、休息 5 分钟、提示音开启，支持自定义时长。通过功能区计时图标或状态栏打开，不与事项联动。
+设置分为“重要事项”和“独立番茄钟”两张卡片。事项默认目录 Daylane/Items、工作日流转；高级选项提供目录限制、流转次数上限及实验性删除方式。番茄钟默认开启，专注 25 分钟、休息 5 分钟、提示音开启，支持自定义时长。默认在编辑区右上角显示迷你悬浮条，可拖动并自动保存位置；点击时间展开控制面板，直接暂停或继续，点击“−”收起到状态栏。点击状态栏时间或功能区计时图标可恢复悬浮条，不占用侧栏。收起、关闭面板和切换笔记不会停止计时；关闭或重载插件会停止计时。不与事项联动。
 
 ## 日历代码块
 

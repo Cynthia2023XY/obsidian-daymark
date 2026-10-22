@@ -61,12 +61,13 @@ describe("名称输入和独立日期选择", () => {
     modal.onOpen();
     expect(modal.contentEl.querySelectorAll("input")).toHaveLength(1);
     expect(modal.contentEl.querySelectorAll("select")).toHaveLength(0);
-    (modal.contentEl.querySelector("input") as HTMLInputElement).value =
-      "2026-10-20";
+    // 使用未来日期，避免固定日期过期后触发禁止改到过去的业务校验
+    const future = addDays(localDay(), 1);
+    (modal.contentEl.querySelector("input") as HTMLInputElement).value = future;
     modal.contentEl
       .querySelector("form")!
       .dispatchEvent(new Event("submit", { cancelable: true }));
-    await vi.waitFor(() => expect(save).toHaveBeenCalledWith("2026-10-20"));
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith(future));
   });
   it("迁移先显示原文保护选项，不在打开时写文件", async () => {
     // 模拟宿主动作边界，组件使用真实业务服务

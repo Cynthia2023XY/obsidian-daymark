@@ -40,6 +40,12 @@ export interface Preferences {
   preserveOnDelete: boolean;
   /** 是否启用独立计时 */
   timerEnabled: boolean;
+  /** 是否将迷你番茄钟收起到状态栏 */
+  timerFloatingHidden: boolean;
+  /** 悬浮条横向位置比例，空值使用编辑区右上角 */
+  timerFloatingX: number | null;
+  /** 悬浮条纵向位置比例，空值使用编辑区右上角 */
+  timerFloatingY: number | null;
   /** 专注默认分钟数 */
   focusMinutes: number;
   /** 休息默认分钟数 */
@@ -55,6 +61,9 @@ export const DEFAULTS: Preferences = {
   maxRollovers: 5,
   preserveOnDelete: false,
   timerEnabled: true,
+  timerFloatingHidden: false,
+  timerFloatingX: null,
+  timerFloatingY: null,
   focusMinutes: 25,
   breakMinutes: 5,
   sound: true,
