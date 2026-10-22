@@ -1,0 +1,51 @@
+styles.css
+  s_fbf1fdc2b543f1::t_dc13573f346073 530-595,599-604,615-646
+  s_fbf1fdc2b543f1::t_dd455b740654cf 596-598,605-614
+src/domain.ts
+  s_fbf1fdc2b543f1::t_39bf2c46693df4 43-48,64-66
+tests/modals-test.ts
+  s_fbf1fdc2b543f1::t_f847714d99301d 64-66,70
+src/main.ts
+  s_fbf1fdc2b543f1::t_3086c026f762b6 22,59-60,100-107
+  s_fbf1fdc2b543f1::t_ce7264d43ea455 108-113,192,199-203,375,381,571-572
+tests/obsidian-mock.ts
+  s_fbf1fdc2b543f1::t_dc13573f346073 3-10
+  s_fbf1fdc2b543f1::t_872050bfc24e16 11-13
+src/floating-timer.ts
+  s_fbf1fdc2b543f1::t_dc13573f346073 1,279-280
+  s_fbf1fdc2b543f1::t_dd455b740654cf 17-18,66-81,274
+  s_fbf1fdc2b543f1::t_0c59dd41f1c678 2-16,19-33,36-41,47-57,65,89,97-100,108,116-122,129-137,146-148,151-153,158,165-166,169-177,185-187,193-203,211-223,230-237,245-249,253-267,275-278,281-283,286-301
+  s_fbf1fdc2b543f1::t_68607d0bc5de2c 34-35,42-46,58-64,82-88,90-96,101-107,109-115,123-128,138-145,149-150,154-157,159-164,167-168,178-184,188-192,204-210,224-229,238-244,250-252,268-273,284-285
+  s_fbf1fdc2b543f1::t_c3a41f91741679 302-310
+tests/main-test.ts
+  s_fbf1fdc2b543f1::t_a5f40f1c1faa1b 203-207,211-214,222-224,228-229,231-232,242-254,258,262,266-273,275-278,285-286,290,294-300,304-310,314-316,320,325-335,342-353,357
+  s_fbf1fdc2b543f1::t_c0a8f9a95b56cd 172-202,208-210,215-221,225-227,230,233-241,255-257,259-261,263-265,274,279-284,287-289,291-293,301-303,311-313,317-319,321-324,336-341
+  s_fbf1fdc2b543f1::t_3086c026f762b6 132-133
+  s_fbf1fdc2b543f1::t_849cee65691f7a 354-356,358-360
+README.md
+  s_fbf1fdc2b543f1::t_1f7d116b5d4618 3,14,73
+manifest.json
+  s_fbf1fdc2b543f1::t_74851cc986a60a 4
+package-lock.json
+  s_fbf1fdc2b543f1::t_f3fdc6043a4327 3,9
+package.json
+  s_fbf1fdc2b543f1::t_ae747b4ee34900 3
+versions.json
+  s_fbf1fdc2b543f1::t_39d6467143ec91 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2599a39a0106b76d1db20521653353e887bd614e",
+  "prompts": {},
+  "sessions": {
+    "s_fbf1fdc2b543f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1619b-e18f-72b1-87cb-53a409c4443b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "dingxinyi.2 <dingxinyi.2@jd.com>"
+    }
+  }
+}
