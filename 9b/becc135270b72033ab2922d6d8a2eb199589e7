@@ -1,0 +1,54 @@
+src/main.ts
+  s_859c9bd5cab421::t_2fd4190aa77547 8,23,693-694,701,724-725,727-730,734-739,741-751,883-886
+  s_859c9bd5cab421::t_2bb6cd066706c8 703,717,726,740,758-759,766-767
+  s_859c9bd5cab421::t_e8a0b28a0df0c1 731-733
+  s_859c9bd5cab421::t_1c6728b0387f5a 887
+src/holidays.ts
+  s_859c9bd5cab421::t_15dc6229f34c39 23,57-69
+  s_859c9bd5cab421::t_3ec7f8a80f9cc6 70-71
+tests/rollover-test.ts
+  s_859c9bd5cab421::t_15dc6229f34c39 94-95,101
+tests/domain-test.ts
+  s_859c9bd5cab421::t_15dc6229f34c39 104-131
+styles.css
+  s_859c9bd5cab421::t_2fd4190aa77547 481-484,492,496-497,500,503,514,516-517,522,533,547,552,554,556-558
+  s_859c9bd5cab421::t_edf6377652d642 422-423,425-430,432-437,439-447,449,453,455-456,459,461,463-472,474,476-480,485-491,493-495,498-499,501-502,504-513,515,518-521,523-532,534-545,548-551,553,555
+README.md
+  s_859c9bd5cab421::t_15dc6229f34c39 16,65
+  s_859c9bd5cab421::t_43792d7a6cc145 3,101-106
+tests/folder-suggest-test.ts
+  s_859c9bd5cab421::t_a7f0004d957ad0 1-16,24-29,36-43,47-60
+  s_859c9bd5cab421::t_965a2ba4e7656e 17-23,30-35,44-46
+tests/main-test.ts
+  s_859c9bd5cab421::t_70d39fb059ba9d 490-509
+src/folder-suggest.ts
+  s_859c9bd5cab421::t_2fd4190aa77547 1-6,8-9,11-15,17-37
+  s_859c9bd5cab421::t_23d5790854da94 7,10,16
+tests/obsidian-mock.ts
+  s_859c9bd5cab421::t_e8a0b28a0df0c1 222-229,241-252
+  s_859c9bd5cab421::t_70d39fb059ba9d 28-39,178-221,230-240,253-257
+manifest.json
+  s_859c9bd5cab421::t_d5070824af5116 4
+package-lock.json
+  s_859c9bd5cab421::t_29f1ce6d8ea1c4 3,9
+package.json
+  s_859c9bd5cab421::t_cc7fb0b114d610 3
+versions.json
+  s_859c9bd5cab421::t_2c1d65b7bc3248 9-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9bbecc135270b72033ab2922d6d8a2eb199589e7",
+  "prompts": {},
+  "sessions": {
+    "s_859c9bd5cab421": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c868-1059-7f53-8a01-3a0034c32eb9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "dingxinyi.2 <dingxinyi.2@jd.com>"
+    }
+  }
+}
