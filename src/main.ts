@@ -5,6 +5,7 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  Setting,
   TFile,
   WorkspaceLeaf,
 } from "obsidian";
@@ -19,6 +20,7 @@ import {
   safeFolder,
 } from "./domain";
 import { HolidayService } from "./holidays";
+import { ItemFolderSuggest } from "./folder-suggest";
 import { FloatingTimer } from "./floating-timer";
 import { DateModal, ImportModal, ItemModal } from "./modals";
 import { ObsidianVault } from "./obsidian-adapter";
@@ -688,13 +690,17 @@ class EmbeddedCalendar extends MarkdownRenderChild {
 }
 /** 事项与番茄钟分开两张配置卡片 */
 class DaymarkSettings extends PluginSettingTab {
+  /** 随设置页关闭释放目录建议弹层 */
+  private folderSuggest?: ItemFolderSuggest;
   /** 绑定精简配置与迁移入口 */
   constructor(private plugin: DaymarkPlugin) {
     super(plugin.app, plugin);
   }
   /** 常用设置少量展示，高级能力折叠 */
   display(): void {
+    this.folderSuggest?.close();
     this.containerEl.replaceChildren();
+    this.containerEl.classList.add("daylane-settings");
     // 读取统一事项集合，供当前视图筛选与分组展示
     const items = element(this.containerEl, "section", "daylane-settings-card");
     element(items, "h3", "", "重要事项");
@@ -708,44 +714,57 @@ class DaymarkSettings extends PluginSettingTab {
       const line = element(parent, "div", "daylane-setting");
       // 保存当前处理阶段的事实结果，供后续校验与展示
       const text = element(line, "div", "daylane-setting-text");
-      element(text, "strong", "", title);
+      element(text, "div", "daylane-setting-name", title);
       if (description) element(text, "small", "", description);
       return line;
     };
     // 保存当前处理阶段的事实结果，供后续校验与展示
     const preferences = this.plugin.getPreferences();
     // 读取用户指定目录，限定索引与迁移范围
-    const folder = element(
-      row(
-        items,
-        "事项目录",
-        "新文档写入此目录；目录限制开启时读取此目录及子目录。",
-      ),
-      "input",
-      "daylane-setting-control",
-    );
-    folder.value = preferences.folder;
-    folder.setAttribute("aria-label", "事项目录");
-    folder.addEventListener("change", () => {
-      void this.plugin.configure({ folder: folder.value }).catch((error) => {
-        folder.value = this.plugin.getPreferences().folder;
-        this.plugin.notify(String(error));
+    const folderSetting = new Setting(items)
+      .setName("事项存储目录")
+      .setDesc("用于保存新建事项，已有笔记不会移动。输入路径可搜索库内目录。")
+      .setClass("daylane-folder-setting");
+    // 保存前保留输入草稿，目录选择和手工输入采用相同提交方式
+    let folderInput: HTMLInputElement;
+    folderSetting.addSearch((search) => {
+      search
+        .setValue(preferences.folder)
+        .setPlaceholder("例如：03Collect/Important Events");
+      folderInput = search.inputEl;
+      folderInput.setAttribute("aria-label", "事项存储目录");
+      folderInput.title = preferences.folder;
+      this.folderSuggest = new ItemFolderSuggest(this.plugin.app, folderInput);
+    });
+    folderSetting.addButton((save) => {
+      save.setButtonText("保存").onClick(async () => {
+        save.setDisabled(true);
+        try {
+          await this.plugin.configure({ folder: folderInput.value });
+          folderInput.value = this.plugin.getPreferences().folder;
+          folderInput.title = folderInput.value;
+          this.plugin.notify("事项存储目录已保存");
+        } catch (error) {
+          this.plugin.notify(String(error));
+        } finally {
+          save.setDisabled(false);
+        }
       });
     });
     // 保存当前处理阶段的事实结果，供后续校验与展示
     const rule = element(
       row(
         items,
-        "自动流转日期规则",
-        "未完成历史事项自动移到下一日期；累计达到上限后入箱。",
+        "未完成事项顺延",
+        "历史未完成事项自动顺延，达到次数上限后移入待办箱。",
       ),
       "select",
       "daylane-setting-control",
     );
     // 逐项处理当前业务集合，保留每项自己的状态与结果
     for (const [value, title] of [
-      ["workday", "未完成事项移到下一个工作日"],
-      ["calendar", "未完成事项移到下一个自然日"],
+      ["workday", "下一个工作日"],
+      ["calendar", "下一个自然日"],
     ]) {
       // 为受控输入添加合法选项，不猜测用户配置
       const option = element(rule, "option", "", title);
@@ -860,5 +879,10 @@ class DaymarkSettings extends PluginSettingTab {
         "默认开启，本地生成短音，失败仍有文字通知。",
       );
     }
+  }
+  /** 离开设置页时关闭悬浮建议，避免遗留在其他页面 */
+  hide(): void {
+    this.folderSuggest?.close();
+    this.folderSuggest = undefined;
   }
 }

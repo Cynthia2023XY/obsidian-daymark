@@ -101,7 +101,34 @@ describe("单日领域模型", () => {
     expect(holidays.isWorkday("2026-10-10")).toBe(true);
     expect(holidays.isWorkday("2026-10-01")).toBe(false);
     expect(holidays.nextWorkday("2026-10-11")).toBe("2026-10-12");
-    expect(holidays.nextWorkday("2027-01-01")).toBeNull();
+    expect(holidays.nextWorkday("2027-01-01")).toBe("2027-01-04");
+    expect(holidays.nextWorkday("2028-01-01")).toBeNull();
+  });
+  it("2027 年假期顺延覆盖补班、单日假期与跨年边界", () => {
+    // 按真实日历规则核对顺延目标，补班优先于周末
+    const holidays = new HolidayService();
+    expect(holidays.covered("2027-12-31")).toBe(true);
+    expect(holidays.nextWorkday("2026-12-31")).toBe("2026-12-31");
+    expect(holidays.nextWorkday("2027-01-30")).toBe("2027-01-31");
+    expect(holidays.nextWorkday("2027-02-05")).toBe("2027-02-14");
+    expect(holidays.nextWorkday("2027-04-03")).toBe("2027-04-06");
+    expect(holidays.nextWorkday("2027-05-01")).toBe("2027-05-06");
+    expect(holidays.isWorkday("2027-05-08")).toBe(true);
+    expect(holidays.nextWorkday("2027-06-09")).toBe("2027-06-10");
+    expect(holidays.nextWorkday("2027-09-15")).toBe("2027-09-16");
+    expect(holidays.nextWorkday("2027-09-25")).toBe("2027-09-26");
+    expect(holidays.nextWorkday("2027-10-01")).toBe("2027-10-08");
+    expect(holidays.isWorkday("2027-10-09")).toBe(true);
+    expect(holidays.get("2027-02-13")).toMatchObject({
+      name: "春节",
+      type: "holiday",
+    });
+    expect(holidays.get("2027-02-14")).toMatchObject({
+      name: "春节调休",
+      type: "workday",
+    });
+    expect(holidays.get("2027-06-10")).toBeUndefined();
+    expect(holidays.get("2027-09-16")).toBeUndefined();
   });
   it("旧代码块配置兼容忽略，新界面没有项目或颜色开关", () => {
     expect(

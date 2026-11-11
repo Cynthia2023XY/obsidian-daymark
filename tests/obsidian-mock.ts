@@ -25,6 +25,18 @@ export class TFile {
   /** 模拟文件路径 */
   constructor(public path: string) {}
 }
+/** 模拟库内目录身份，供目录建议过滤文件 */
+export class TFolder {
+  /** 目录在笔记库中的相对路径 */
+  constructor(public path: string) {}
+}
+/** 公开建议组件的最小宿主边界，实际键盘交互由 Obsidian 负责 */
+export class AbstractInputSuggest<T> {
+  /** 记录建议列表绑定的输入框 */
+  constructor(_app: unknown, _input: HTMLInputElement) {}
+  /** 测试不创建宿主浮层 */
+  close(): void {}
+}
 /** 保持相对路径规则与宿主一致 */
 export function normalizePath(path: string): string {
   return path.replace(/\\/g, "/");
@@ -163,8 +175,86 @@ export class PluginSettingTab {
   /** 模拟公开构造接口 */
   constructor(_app: unknown, _plugin: unknown) {}
 }
-/** 设置链在生命周期测试中无需渲染 */
-export class Setting {}
+/** 模拟原生设置行，验证插件保存操作而非宿主内部实现 */
+export class Setting {
+  /** 原生设置行容器 */
+  settingEl = document.createElement("div");
+  /** 原生设置名称 */
+  nameEl = document.createElement("div");
+  /** 原生设置说明 */
+  descEl = document.createElement("div");
+  /** 原生设置操作区 */
+  controlEl = document.createElement("div");
+  /** 将可测试控件挂载到设置页 */
+  constructor(container: HTMLElement) {
+    this.controlEl.className = "setting-item-control";
+    this.settingEl.append(this.nameEl, this.descEl, this.controlEl);
+    container.append(this.settingEl);
+  }
+  /** 显示设置名称 */
+  setName(name: string): this {
+    this.nameEl.textContent = name;
+    return this;
+  }
+  /** 显示设置说明 */
+  setDesc(description: string): this {
+    this.descEl.textContent = description;
+    return this;
+  }
+  /** 添加插件作用域样式 */
+  setClass(name: string): this {
+    this.settingEl.classList.add(name);
+    return this;
+  }
+  /** 提供与宿主相同的目录文本输入边界 */
+  addSearch(callback: (search: any) => void): this {
+    // 保留原生搜索输入结构以便断言路径草稿
+    const container = document.createElement("div");
+    container.className = "search-input-container";
+    // 搜索控件使用显式文本类型
+    const input = document.createElement("input");
+    input.type = "text";
+    container.append(input);
+    this.controlEl.append(container);
+    // 实现本插件实际依赖的公开链式接口
+    const search = {
+      inputEl: input,
+      setValue: (value: string) => {
+        input.value = value;
+        return search;
+      },
+      setPlaceholder: (value: string) => {
+        input.placeholder = value;
+        return search;
+      },
+    };
+    callback(search);
+    return this;
+  }
+  /** 提供可触发的保存按钮 */
+  addButton(callback: (button: any) => void): this {
+    // 通过真实点击事件验证配置提交
+    const input = document.createElement("button");
+    this.controlEl.append(input);
+    // 按钮状态和点击处理保持公开 API 的调用契约
+    const button = {
+      setButtonText: (value: string) => {
+        input.textContent = value;
+        return button;
+      },
+      setDisabled: (value: boolean) => {
+        input.disabled = value;
+        return button;
+      },
+      onClick: (handler: () => void) => {
+        input.addEventListener("click", handler);
+        return button;
+      },
+    };
+    callback(button);
+    return this;
+  }
+}
 
 /** 捕获菜单供右键行为断言 */
 export class Menu {

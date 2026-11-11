@@ -487,6 +487,26 @@ describe("单日插件宿主", () => {
       containerEl: HTMLElement;
     };
     settings.display();
+    // 编辑路径只是草稿，失焦不应提前切换事项索引目录
+    const folder = settings.containerEl.querySelector<HTMLInputElement>(
+      'input[aria-label="事项存储目录"]',
+    )!;
+    folder.value = "New/Items";
+    folder.dispatchEvent(new Event("change"));
+    expect(plugin.getPreferences().folder).toBe("Daylane/Items");
+    // 显式保存后才应用新路径
+    const save = settings.containerEl.querySelector<HTMLButtonElement>(
+      ".daylane-folder-setting button",
+    )!;
+    save.click();
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(plugin.getPreferences().folder).toBe("New/Items");
+    // 无效目录不改变已保存设置，保留草稿便于修正
+    folder.value = "../Invalid";
+    save.click();
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(plugin.getPreferences().folder).toBe("New/Items");
+    expect(folder.value).toBe("../Invalid");
     expect(
       settings.containerEl.querySelectorAll(".daylane-settings-card"),
     ).toHaveLength(2);

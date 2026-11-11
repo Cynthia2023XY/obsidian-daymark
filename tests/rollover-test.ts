@@ -91,12 +91,14 @@ describe("自然日和工作日累计流转", () => {
     expect(repository.items()[0].date).toBe("2026-10-10");
     await service.run("2026-10-11");
     expect(repository.items()[0].date).toBe("2026-10-12");
+    await service.run("2027-01-01");
+    expect(repository.items()[0].date).toBe("2027-01-04");
     // 保存当前处理阶段的事实结果，供后续校验与展示
     const count = repository.items()[0].rolloverCount;
     // 记录实际写入数量，验证空检查与重复触发不改动文件
     const writes = vault.updates;
     // 汇总实际操作成功、跳过与失败，避免向用户伪报结果
-    const result = await service.run("2027-01-01");
+    const result = await service.run("2028-01-01");
     expect(result.errors[0]).toContain("未收录");
     expect(repository.items()[0].rolloverCount).toBe(count);
     expect(vault.updates).toBe(writes);
